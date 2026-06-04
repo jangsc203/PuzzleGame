@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -37,14 +37,14 @@
         <button id="btnLeaderboard" class="icon-btn tooltip hidden" data-tooltip="순위표 보기">
           <span class="icon">🏆</span>
         </button>
-        <button id="btnLogout" class="icon-btn tooltip hidden" data-tooltip="로그아웃">
-          <span class="icon">🚪</span>
-        </button>
         <button id="btnSoundToggle" class="icon-btn tooltip" data-tooltip="사운드 켜기/끄기">
           <span class="icon">🔊</span>
         </button>
         <button id="btnHelpToggle" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
           <span class="icon">❓</span>
+        </button>
+        <button id="btnLogout" class="icon-btn tooltip hidden" data-tooltip="로그아웃">
+          <span class="icon">🚪</span>
         </button>
       </div>
     </header>
@@ -64,6 +64,10 @@
     <!-- 메인 플레이 필드 & HUD -->
     <section class="game-playground">
       <div class="hud-panel left-hud">
+        <button id="btnBackToMenu" class="btn btn-secondary tooltip btn-block" data-tooltip="스테이지 선택 메뉴로 이동">
+          <span>🗺️ Menu</span>
+        </button>
+
         <div class="hud-card ap-card">
           <span class="hud-label">남은 행동력 (AP)</span>
           <div class="ap-value-container">
@@ -123,6 +127,7 @@
             <p id="overlayDesc">탈출에 성공했습니다!</p>
             <div class="overlay-buttons">
               <button id="btnOverlayNext" class="btn btn-primary">다음 레벨</button>
+              <button id="btnOverlayMenu" class="btn btn-secondary">스테이지 선택</button>
               <button id="btnOverlayRestart" class="btn btn-secondary hidden">다시하기</button>
             </div>
           </div>
@@ -241,6 +246,69 @@
     </div>
   </div>
 
+  <!-- 챕터 선택 화면 -->
+  <div id="chapterSelectOverlay" class="chapter-select-overlay hidden">
+    <div class="chapter-select-box glass-card">
+      <div class="chapter-select-logo">
+        <h2>📖 모험의 서 (Chapters)</h2>
+        <p class="chapter-select-subtitle">탐험할 챕터를 선택해 모험을 시작하세요.</p>
+      </div>
+      
+      <!-- 챕터 카드 그리드 -->
+      <div id="chapterSelectGrid" class="chapter-grid">
+        <!-- 튜토리얼 (플레이 가능) -->
+        <div class="chapter-card" id="chapterCard1">
+          <div class="chapter-badge unlocked">플레이 가능</div>
+          <div class="chapter-num">기초 훈련</div>
+          <div class="chapter-name">⚙️ 튜토리얼 (Tutorial)</div>
+          <div class="chapter-desc">기초 상자 밀기 규칙과 기본 퍼즐 메커니즘을 학습합니다. (1층~5층)</div>
+        </div>
+        <!-- 챕터 1 (출시 예정 / 잠금) -->
+        <div class="chapter-card locked" id="chapterCard2">
+          <div class="chapter-badge locked">🔒 출시 예정</div>
+          <div class="chapter-num">제 1장</div>
+          <div class="chapter-name">🌋 심연의 사원 (Abyssal Temple)</div>
+          <div class="chapter-desc">더 깊은 어둠 속, 압력판 게이트와 복잡한 갈림길이 모험가를 위협합니다.</div>
+        </div>
+        <!-- 챕터 2 (출시 예정 / 잠금) -->
+        <div class="chapter-card locked" id="chapterCard3">
+          <div class="chapter-badge locked">🔒 출시 예정</div>
+          <div class="chapter-num">제 2장</div>
+          <div class="chapter-name">❄️ 서리의 요새 (Frost Fortress)</div>
+          <div class="chapter-desc">얼어붙은 관성의 얼음 빙판과 치명적인 함정이 모험가의 길을 가로막습니다.</div>
+        </div>
+      </div>
+      
+      <!-- 푸터 버튼 (순위표, 로그아웃) -->
+      <div class="chapter-select-buttons">
+        <button id="btnChapterSelectLeaderboard" class="btn btn-secondary">🏆 순위표</button>
+        <button id="btnChapterSelectLogout" class="btn btn-danger">🚪 로그아웃</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 스테이지 선택 화면 -->
+  <div id="stageSelectOverlay" class="stage-select-overlay hidden">
+    <div class="stage-select-box glass-card">
+      <div class="stage-select-logo">
+        <h2>🗺️ 던전 탐험</h2>
+        <p class="stage-select-subtitle">탐험할 층(Stage)을 선택하세요.</p>
+      </div>
+      
+      <!-- 스테이지 카드 그리드 -->
+      <div id="stageSelectGrid" class="stage-grid">
+        <!-- JS를 통해 5개의 스테이지 카드가 동적으로 생성됩니다. -->
+      </div>
+      
+      <!-- 푸터 버튼 (뒤로가기, 순위표, 로그아웃) -->
+      <div class="stage-select-buttons">
+        <button id="btnStageSelectBackToChapters" class="btn btn-secondary">↩️ 챕터 선택</button>
+        <button id="btnStageSelectLeaderboard" class="btn btn-secondary">🏆 순위표</button>
+        <button id="btnStageSelectLogout" class="btn btn-danger">🚪 로그아웃</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 로그인 / 인증 화면 -->
   <div id="loginOverlay" class="login-overlay">
     <div class="login-box glass-card">
@@ -326,7 +394,7 @@
     </div>
   </div>
 
-  <script src="levels.js?v=10"></script>
-  <script src="game.js?v=18"></script>
+  <script src="levels.js?v=11"></script>
+  <script src="game.js?v=27"></script>
 </body>
 </html>

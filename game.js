@@ -385,6 +385,50 @@ function initGame() {
     logout();
   });
 
+  // Bind Stage Select Navigation & Utility buttons
+  document.getElementById('btnBackToMenu').addEventListener('click', () => {
+    showStageSelectMenu();
+  });
+
+  document.getElementById('btnOverlayMenu').addEventListener('click', () => {
+    document.getElementById('screenOverlay').classList.add('hidden');
+    showStageSelectMenu();
+  });
+
+  document.getElementById('btnStageSelectLeaderboard').addEventListener('click', () => {
+    showLeaderboardModal();
+  });
+
+  document.getElementById('btnStageSelectLogout').addEventListener('click', () => {
+    logout();
+  });
+
+  document.getElementById('btnStageSelectBackToChapters').addEventListener('click', () => {
+    document.getElementById('stageSelectOverlay').classList.add('hidden');
+    showChapterSelectMenu();
+  });
+
+  // Bind Chapter Selection Event Listeners
+  document.getElementById('chapterCard1').addEventListener('click', () => {
+    document.getElementById('chapterSelectOverlay').classList.add('hidden');
+    showStageSelectMenu();
+  });
+
+  ['chapterCard2', 'chapterCard3'].forEach(id => {
+    document.getElementById(id).addEventListener('click', () => {
+      sound.playFail();
+      shakeCard(id);
+    });
+  });
+
+  document.getElementById('btnChapterSelectLeaderboard').addEventListener('click', () => {
+    showLeaderboardModal();
+  });
+
+  document.getElementById('btnChapterSelectLogout').addEventListener('click', () => {
+    logout();
+  });
+
   // Load first level
   loadLevel(0);
 
@@ -1376,9 +1420,11 @@ function draw() {
     }
   }
 
-  // 2. Draw Connection Lines in Editor mode
+  // 2. Draw Connection Lines
   if (isEditorMode) {
     drawEditorConnections();
+  } else {
+    drawGameplayConnections();
   }
 
   // 3. Draw Active Spikes Overlay Animations
@@ -2135,6 +2181,42 @@ function drawTile(x, y, type) {
       ctx.strokeRect(px + 4, py + 4, tileSize - 8, tileSize - 8);
       break;
   }
+
+  // Draw matching connection letters on switches and doors
+  if (type === 'S' || type === 'K' || type === 'D') {
+    const connIdx = connections.findIndex(c => 
+      (c.switch.x === x && c.switch.y === y) || 
+      (c.door.x === x && c.door.y === y)
+    );
+    if (connIdx !== -1) {
+      ctx.save();
+      const label = String.fromCharCode(65 + connIdx); // 'A', 'B', 'C', ...
+      const badgeColors = ['#ffea00', '#00b0ff', '#d500f9', '#00e676'];
+      const badgeColor = badgeColors[connIdx % badgeColors.length];
+      
+      const bx = px + tileSize - 11;
+      const by = py + 11;
+      
+      ctx.shadowColor = badgeColor;
+      ctx.shadowBlur = 5;
+      
+      ctx.fillStyle = '#090b10';
+      ctx.strokeStyle = badgeColor;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(bx, by, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx, by);
+      ctx.restore();
+    }
+  }
 }
 
 function drawBox(box) {
@@ -2308,6 +2390,30 @@ function drawEditorConnections() {
     ctx.fillStyle = '#fff';
     ctx.font = '10px monospace';
     ctx.fillText(`#${index + 1}`, (sx + dx) / 2, (sy + dy) / 2);
+    ctx.restore();
+  });
+}
+
+function drawGameplayConnections() {
+  connections.forEach((conn, index) => {
+    const sx = conn.switch.x * tileSize + tileSize/2;
+    const sy = conn.switch.y * tileSize + tileSize/2;
+    const dx = conn.door.x * tileSize + tileSize/2;
+    const dy = conn.door.y * tileSize + tileSize/2;
+
+    ctx.save();
+    const badgeColors = ['#ffea00', '#00b0ff', '#d500f9', '#00e676'];
+    const color = badgeColors[index % badgeColors.length];
+    
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.25; // Soft sub-floor wiring
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(dx, dy);
+    ctx.stroke();
     ctx.restore();
   });
 }
@@ -2598,6 +2704,7 @@ function checkLoginState() {
   if (user && USER_PASSWORDS[user]) {
     hideLoginOverlay(user);
     syncUserRecordsFromCloud(user);
+    showChapterSelectMenu();
   } else {
     showLoginOverlay();
   }
@@ -2634,6 +2741,7 @@ function attemptLogin(username, password) {
   if (correctPass && password === correctPass) {
     hideLoginOverlay(username);
     syncUserRecordsFromCloud(username);
+    showChapterSelectMenu();
   } else {
     // Show error message as requested
     errorMsgEl.textContent = `${username}이 아닙니다! 나가주세요!`;
@@ -2708,6 +2816,9 @@ async function syncUserRecordsFromCloud(username) {
           }
         });
         updateRecordHUD();
+        if (!document.getElementById('stageSelectOverlay').classList.contains('hidden')) {
+          renderStageSelectGrid();
+        }
       } else {
         uploadUserRecordsCloud(username);
       }
@@ -2723,7 +2834,7 @@ async function showLeaderboardModal() {
   tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px;">데이터를 불러오는 중... (Syncing Cloud)</td></tr>';
   modal.classList.remove('hidden');
   
-  const users = Object.keys(USER_PASSWORDS);
+  const users = Object.keys(USER_PASSWORDS).filter(u => u !== '관리자');
   const currentLoggedUser = localStorage.getItem('runic_dungeon_user');
   
   try {
@@ -2831,6 +2942,64 @@ function getUserIcon(username) {
     '관리자': '🛡️'
   };
   return icons[username] || '🤖';
+}
+
+// Stage Selection Overlay Functions
+function showStageSelectMenu() {
+  document.getElementById('stageSelectOverlay').classList.remove('hidden');
+  renderStageSelectGrid();
+}
+
+function renderStageSelectGrid() {
+  const grid = document.getElementById('stageSelectGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  
+  DEFAULT_LEVELS.forEach((lvl, idx) => {
+    const best = getBestRecord(idx);
+    const card = document.createElement('div');
+    card.className = 'stage-card';
+    
+    const numDiv = document.createElement('div');
+    numDiv.className = 'stage-num';
+    numDiv.textContent = `${idx + 1}층`;
+    
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'stage-name';
+    nameDiv.textContent = lvl.name.split('. ')[1] || lvl.name;
+    
+    const starsDiv = document.createElement('div');
+    starsDiv.className = 'stage-stars' + (best && best.stars > 0 ? ' has-stars' : '');
+    starsDiv.textContent = best ? '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) : '☆☆☆';
+    
+    card.appendChild(numDiv);
+    card.appendChild(nameDiv);
+    card.appendChild(starsDiv);
+    
+    card.addEventListener('click', () => {
+      document.getElementById('stageSelectOverlay').classList.add('hidden');
+      sound.init();
+      loadLevel(idx);
+      document.getElementById('levelSelect').value = idx;
+      canvas.focus();
+    });
+    
+    grid.appendChild(card);
+  });
+}
+
+// Chapter Selection Overlay Functions
+function showChapterSelectMenu() {
+  document.getElementById('chapterSelectOverlay').classList.remove('hidden');
+}
+
+function shakeCard(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  card.classList.add('shake-anim');
+  setTimeout(() => {
+    card.classList.remove('shake-anim');
+  }, 400);
 }
 
 // Global script load initializer
