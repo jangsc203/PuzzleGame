@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>루닉 던전: 소코반 퍼즐 (Runic Dungeon)</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="빙판 미끄러짐, 깨지는 바닥, 가시 함정, 일방통행 등 다양한 기믹이 어우러진 현대적인 소코반 뇌섹 퍼즐 게임을 플레이해 보세요.">
+  <meta name="keywords" content="소코반, 퍼즐게임, 웹게임, 인디게임, 뇌섹게임, 얼음바닥, 크롬캐스트">
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css?v=18">
+</head>
+<body>
+  <div class="glass-bg-blur"></div>
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+
+  <!-- 메인 게임 컨테이너 -->
+  <main class="app-container" id="appContainer">
+    <!-- 헤더 영역 -->
+    <header class="game-header">
+      <div class="logo-area">
+        <h1 id="mainTitle">RUNIC DUNGEON</h1>
+        <span class="sub-logo">Sokoban Puzzle</span>
+      </div>
+      <div class="header-controls">
+        <div id="userProfileTag" class="user-profile-tag hidden">
+          <span class="icon" id="userProfileIcon">🤖</span>
+          <span id="loggedInUserName">모험가</span>
+        </div>
+        <button id="btnLeaderboard" class="icon-btn tooltip hidden" data-tooltip="순위표 보기">
+          <span class="icon">🏆</span>
+        </button>
+        <button id="btnLogout" class="icon-btn tooltip hidden" data-tooltip="로그아웃">
+          <span class="icon">🚪</span>
+        </button>
+        <button id="btnSoundToggle" class="icon-btn tooltip" data-tooltip="사운드 켜기/끄기">
+          <span class="icon">🔊</span>
+        </button>
+        <button id="btnHelpToggle" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
+          <span class="icon">❓</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 레벨 선택 및 설명 바 -->
+    <section class="level-bar">
+      <div class="level-select-wrapper">
+        <label for="levelSelect">스테이지: </label>
+        <select id="levelSelect" class="styled-select"></select>
+      </div>
+      <div class="level-info">
+        <h2 id="levelName">레벨 이름</h2>
+        <p id="levelDesc">레벨 설명</p>
+      </div>
+    </section>
+
+    <!-- 메인 플레이 필드 & HUD -->
+    <section class="game-playground">
+      <div class="hud-panel left-hud">
+        <div class="hud-card ap-card">
+          <span class="hud-label">남은 행동력 (AP)</span>
+          <div class="ap-value-container">
+            <span id="apText">50 / 50</span>
+          </div>
+          <div class="ap-progress-bar">
+            <div id="apProgressFill" class="progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="hud-card star-card">
+          <span class="hud-label">별 등급</span>
+          <div class="stars-display" id="starsDisplay">
+            <span class="star active" id="star1">★</span>
+            <span class="star active" id="star2">★</span>
+            <span class="star active" id="star3">★</span>
+          </div>
+          <div id="starApStatus" class="star-ap-status">별 3개까지 남은 행동력: 8 AP</div>
+        </div>
+
+        <div class="hud-card move-card">
+          <div class="hud-stat">
+            <span class="hud-label">이동 수</span>
+            <span id="moveCount" class="hud-value">0</span>
+          </div>
+        </div>
+
+        <div class="hud-card action-controls">
+          <button id="btnUndo" class="btn btn-secondary tooltip" data-tooltip="되돌리기 (Z)" style="display: none;">
+            <span>↩️ Undo</span>
+          </button>
+          <button id="btnRedo" class="btn btn-secondary tooltip" data-tooltip="다시실행 (Y)" style="display: none;">
+            <span>↪️ Redo</span>
+          </button>
+          <button id="btnRestart" class="btn btn-danger tooltip" data-tooltip="다시 시작 (R)">
+            <span>🔄 Restart</span>
+          </button>
+        </div>
+
+        <!-- 스테이지 기록 보드판 -->
+        <div class="hud-card record-card">
+          <span class="hud-label">스테이지별 최고 기록</span>
+          <div class="record-list" id="recordList">
+            <!-- JS를 통해 동적 데이터가 주입됩니다. -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 캔버스 컨테이너 -->
+      <div class="canvas-container">
+        <canvas id="gameCanvas" width="640" height="480"></canvas>
+        <!-- 화면 메시지 오버레이 (성공 / 실패) -->
+        <div id="screenOverlay" class="screen-overlay hidden">
+          <div class="overlay-content">
+            <h2 id="overlayTitle">SUCCESS</h2>
+            <div class="overlay-stars-display" id="overlayStarsDisplay"></div>
+            <p id="overlayDesc">탈출에 성공했습니다!</p>
+            <div class="overlay-buttons">
+              <button id="btnOverlayNext" class="btn btn-primary">다음 레벨</button>
+              <button id="btnOverlayRestart" class="btn btn-secondary hidden">다시하기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 푸터 영역 -->
+    <footer class="game-footer">
+      <p>방향키(↑↓←→) 또는 WASD로 이동. Z: 되돌리기 | Y: 다시실행 | R: 다시시작 | ESC: 레벨 선택</p>
+    </footer>
+  </main>
+
+  <!-- 게임 설명 / 도움말 팝업 -->
+  <div class="modal hidden" id="helpModal">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h2>Dungeon Rules & Mechanics</h2>
+        <button id="btnHelpClose" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y">
+        <div class="guide-grid">
+          <!-- 기믹 카드 1: 플레이어 -->
+          <div class="guide-card">
+            <span class="guide-icon green-glow">🤖</span>
+            <div class="guide-text">
+              <h3>플레이어 (Player)</h3>
+              <p>방향키나 WASD로 공중 부양 로봇 드론(🤖)을 조작합니다. 가시나 구덩이에 빠지지 않도록 유의하세요.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 1-2: 상자 -->
+          <div class="guide-card">
+            <span class="guide-icon green-glow">📦</span>
+            <div class="guide-text">
+              <h3>상자 (Box)</h3>
+              <p>로봇으로 밀어 움직일 수 있으며, 구멍을 메우거나 목표 구역 위에 올려놓아야 하는 핵심 개체입니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 2 -->
+          <div class="guide-card">
+            <span class="guide-icon blue-glow">🕳️</span>
+            <div class="guide-text">
+              <h3>구멍과 메우기 (Hole)</h3>
+              <p>로봇은 구멍을 건널 수 없지만, 상자를 구멍으로 밀어 넣으면 다리(Filled Floor)가 되어 밟고 다닐 수 있습니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 3 -->
+          <div class="guide-card">
+            <span class="guide-icon cyan-glow">🧊</span>
+            <div class="guide-text">
+              <h3>얼음 바닥 (Ice)</h3>
+              <p>얼음 바닥을 밟거나 상자를 밀어 넣으면 벽이나 장애물에 부딪힐 때까지 멈추지 않고 미끄러집니다. 미끄러지는 중간에는 조작할 수 없습니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 4: 일시적 스위치 -->
+          <div class="guide-card">
+            <span class="guide-icon red-glow">🔴</span>
+            <div class="guide-text">
+              <h3>일시적 스위치 (Temporary Switch)</h3>
+              <p>밟고 있는 동안만 연결된 문(🔒)을 여는 빨간색 아케이드 돔 버튼입니다. 누르면 녹색(🟢)으로 바뀝니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 4-2: 영구적 스위치 -->
+          <div class="guide-card">
+            <span class="guide-icon gold-glow">🟡</span>
+            <div class="guide-text">
+              <h3>영구적 스위치 (Permanent Switch)</h3>
+              <p>한 번 밟으면 보라색(🟣)으로 락온되어 연결된 문을 영구 개방시키는 노란색 열쇠 버튼입니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 4-3: 잠긴 장벽 -->
+          <div class="guide-card">
+            <span class="guide-icon blue-glow">🔒</span>
+            <div class="guide-text">
+              <h3>잠긴 장벽 (Locked Door)</h3>
+              <p>연결된 스위치를 눌러 장벽을 해제할 수 있습니다. 스위치가 모두 활성화되면 녹색의 안전 개방 상태(🔓)로 바뀝니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 5 -->
+          <div class="guide-card">
+            <span class="guide-icon red-glow">🔺</span>
+            <div class="guide-text">
+              <h3>가시 함정 (Spikes)</h3>
+              <p>밟을 때마다 행동력(AP)이 5 소모되어 높은 별점을 받기 어려워집니다. 가시를 우회하거나 타이밍을 맞춰 피하세요.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 6 -->
+          <div class="guide-card">
+            <span class="guide-icon purple-glow">➡️</span>
+            <div class="guide-text">
+              <h3>일방통행 (One-Way)</h3>
+              <p>바닥에 표시된 화살표 방향으로만 움직여 들어갈 수 있습니다. 반대 방향에서 들어가려고 하면 벽처럼 앞을 가로막습니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 7 -->
+          <div class="guide-card">
+            <span class="guide-icon orange-glow">🧱</span>
+            <div class="guide-text">
+              <h3>깨지는 바닥 (Crumbling)</h3>
+              <p>밟고 올라섰다가 다른 타일로 지나가면 타일이 바스라지며 구멍(Hole)으로 바뀝니다. 아라비아 숫자(1, 2)는 밟을 수 있는 남은 횟수를 의미하며 색상(빨강/초록)으로 쉽게 식별 가능합니다.</p>
+            </div>
+          </div>
+          <!-- 기믹 카드 8 -->
+          <div class="guide-card">
+            <span class="guide-icon magenta-glow">🌟</span>
+            <div class="guide-text">
+              <h3>상자 목표 지점 (Goal)</h3>
+              <p>모든 상자를 노란색 별 모양 목표 구역(Goal Zone) 위에 올려놓으면 스테이지를 클리어합니다!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnHelpConfirm" class="btn btn-primary">던전 들어가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 로그인 / 인증 화면 -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-box glass-card">
+      <div class="login-logo">
+        <h2>RUNIC DUNGEON</h2>
+        <p class="login-subtitle">모험가를 선택하고 비밀번호를 입력하여 던전에 입장하세요.</p>
+      </div>
+      
+      <!-- 사용자 선택 목록 -->
+      <div id="loginUserList" class="user-select-grid">
+        <button class="user-select-btn" data-username="엽이">
+          <svg viewBox="0 0 36 36" width="20" height="20" style="vertical-align: middle; display: inline-block;">
+            <defs>
+              <linearGradient id="sliceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#FFF9C4" />
+                <stop offset="40%" stop-color="#FFEE58" />
+                <stop offset="100%" stop-color="#FBC02D" />
+              </linearGradient>
+            </defs>
+            <path d="M 14,24 A 8,8 0 0,1 30,24 Z" fill="url(#sliceGrad)" stroke="#F5B041" stroke-width="0.8"/>
+            <path d="M 16,23 A 6,6 0 0,1 28,23 Z" fill="#FFFDE7" opacity="0.6"/>
+            <path d="M 10,28 A 8,8 0 0,1 26,28 Z" fill="url(#sliceGrad)" stroke="#F5B041" stroke-width="0.8"/>
+            <path d="M 12,27 A 6,6 0 0,1 24,27 Z" fill="#FFFDE7" opacity="0.6"/>
+            <path d="M 6,32 A 8,8 0 0,1 22,32 Z" fill="url(#sliceGrad)" stroke="#F5B041" stroke-width="0.8"/>
+            <path d="M 8,31 A 6,6 0 0,1 20,31 Z" fill="#FFFDE7" opacity="0.6"/>
+          </svg>
+          엽이
+        </button>
+        <button class="user-select-btn" data-username="영기"><span>🍠</span> 영기</button>
+        <button class="user-select-btn" data-username="조씨"><span>🗡️</span> 조씨</button>
+        <button class="user-select-btn" data-username="앵웅"><span>🚬</span> 앵웅</button>
+        <button class="user-select-btn" data-username="관리자"><span>🛡️</span> 관리자</button>
+      </div>
+      
+      <!-- 비밀번호 입력 폼 (기본 숨김) -->
+      <div id="loginPasswordForm" class="password-form-container hidden">
+        <h3 id="selectedUserTitle">모험가: 엽이</h3>
+        <div class="input-group">
+          <input type="password" id="loginPasswordInput" placeholder="비밀번호를 입력하세요" maxlength="20">
+        </div>
+        <div class="login-form-buttons">
+          <button id="btnLoginSubmit" class="btn btn-primary">확인</button>
+          <button id="btnLoginCancel" class="btn btn-secondary">뒤로가기</button>
+        </div>
+      </div>
+      
+      <!-- 에러 메시지 표시 -->
+      <div id="loginErrorMsg" class="login-error-msg hidden"></div>
+    </div>
+  </div>
+
+  <!-- 순위표 모달 -->
+  <div class="modal hidden" id="leaderboardModal">
+    <div class="modal-content glass-card wide-modal">
+      <div class="modal-header">
+        <h2>🏆 실시간 명예의 전당 (순위표)</h2>
+        <button id="btnLeaderboardClose" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y">
+        <p class="leaderboard-desc">친구들의 최고 기록과 클리어 통계입니다. (실시간 연동)</p>
+        <div class="table-responsive">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>모험가</th>
+                <th>총 획득 별점</th>
+                <th>평균 이동수</th>
+                <th>총 이동수</th>
+                <th>완료 층수</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboardTableBody">
+              <!-- 동적으로 로딩됩니다 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnLeaderboardRefresh" class="btn btn-secondary">🔄 새로고침</button>
+        <button id="btnLeaderboardConfirm" class="btn btn-primary">던전으로 돌아가기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="levels.js?v=10"></script>
+  <script src="game.js?v=18"></script>
+</body>
+</html>
