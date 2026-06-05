@@ -2806,7 +2806,8 @@ function logout() {
   location.reload();
 }
 
-const DB_OBJECT_ID = 'ff8081819d82fab6019e93df3c823d46';
+const DB_OBJECT_ID = '9e762e1a';
+const DB_EDIT_KEY = 'e1604ec46cb395e7662360f0a8e88b85ac38ac5a1681e23d2180a8aee6f321f7';
 
 async function uploadUserRecordsCloud(username) {
   try {
@@ -2819,26 +2820,42 @@ async function uploadUserRecordsCloud(username) {
     });
 
     let dbData = {};
+    let fetchSuccess = false;
     try {
-      const res = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}?t=${Date.now()}`);
+      const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
       if (res.ok) {
         const obj = await res.json();
         dbData = obj.data || {};
+        fetchSuccess = true;
+      } else {
+        console.error("Fetch DB error status during upload:", res.status);
       }
     } catch (e) {
       console.error("Fetch DB error during upload:", e);
     }
 
+    // If fetch failed, DO NOT overwrite the DB as it would delete other users' records!
+    if (!fetchSuccess) {
+      console.warn("Aborting upload to prevent database overwrites during outage.");
+      return;
+    }
+
     dbData[username] = userRecords;
 
-    await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    const patchRes = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Edit-Key': DB_EDIT_KEY
+      },
       body: JSON.stringify({
         name: "RunicDungeonLeaderboard",
         data: dbData
       })
     });
+    if (!patchRes.ok) {
+      console.error("Failed to patch DB on upload:", patchRes.status);
+    }
   } catch (e) {
     console.error('Cloud upload error:', e);
   }
@@ -2846,11 +2863,10 @@ async function uploadUserRecordsCloud(username) {
 
 async function syncUserRecordsFromCloud(username) {
   try {
-    const res = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}?t=${Date.now()}`);
+    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
     if (res.ok) {
-      const obj = await res.json();
-      const dbData = obj.data || {};
-      const userRecords = dbData[username];
+      const dbData = await res.json();
+      const userRecords = (dbData.data && dbData.data[username]) || null;
       
       if (userRecords) {
         DEFAULT_LEVELS.forEach((_, idx) => {
@@ -2875,6 +2891,8 @@ async function syncUserRecordsFromCloud(username) {
           renderStageSelectGrid();
         }
       }
+    } else {
+      console.error("Cloud sync failed (response not ok):", res.status);
     }
   } catch (e) {
     console.error('Cloud sync error:', e);
@@ -2891,11 +2909,15 @@ async function showLeaderboardModal() {
   const currentLoggedUser = localStorage.getItem('runic_dungeon_user');
   
   try {
-    const res = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}?t=${Date.now()}`);
+    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
     let dbData = {};
     if (res.ok) {
       const obj = await res.json();
       dbData = obj.data || {};
+    } else {
+      console.error("Leaderboard fetch failed:", res.status);
+      tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다. (HTTP ' + res.status + ')</td></tr>';
+      return;
     }
     
     const statsList = users.map(u => {
@@ -3026,27 +3048,33 @@ async function deleteUserRecord(username) {
   }
   
   try {
-    const res = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}?t=${Date.now()}`);
+    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
     let dbData = {};
     if (res.ok) {
       const obj = await res.json();
       dbData = obj.data || {};
+    } else {
+      alert('기록을 불러오는 데 실패했습니다.');
+      return;
     }
     
     if (dbData[username]) {
       delete dbData[username];
     }
     
-    const putRes = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    const patchRes = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Edit-Key': DB_EDIT_KEY
+      },
       body: JSON.stringify({
         name: "RunicDungeonLeaderboard",
         data: dbData
       })
     });
     
-    if (putRes.ok) {
+    if (patchRes.ok) {
       alert(`${username} 모험가의 기록이 삭제되었습니다.`);
       showLeaderboardModal();
     } else {
