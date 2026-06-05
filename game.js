@@ -243,9 +243,15 @@ let clearPath = []; // Records directions taken by player to clear level (e.g. [
 // Animation States
 let isAnimating = false;
 let animationQueue = []; // [{type: 'player'/'box'/'spike'/'crumble', fromX, fromY, toX, toY, progress, duration, eventData}]
-let activeSpikesAnim = {}; // "x,y" -> float timer for spike popup
 let shakeDuration = 0;
 let shakeIntensity = 0;
+
+// Replay Engine States
+window.isReplaying = false;
+window.replayPath = [];
+window.replayIndex = 0;
+window.replayTimeoutId = null;
+window.replayOriginalLevelIdx = 0;
 
 // Tile Palette mapping for drawing
 const TILE_SIZE_MAX = 128;
@@ -285,6 +291,7 @@ function initGame() {
   });
 
   document.getElementById('btnHelpToggle').addEventListener('click', () => {
+    if (window.isReplaying) return;
     document.getElementById('helpModal').classList.remove('hidden');
   });
 
@@ -297,11 +304,13 @@ function initGame() {
     sound.init();
   });
 
-  document.getElementById('btnUndo').addEventListener('click', () => { undo(); canvas.focus(); });
-  document.getElementById('btnRedo').addEventListener('click', () => { redo(); canvas.focus(); });
-  document.getElementById('btnRestart').addEventListener('click', () => { restartLevel(); canvas.focus(); });
+  document.getElementById('btnUndo').addEventListener('click', () => { if (window.isReplaying) return; undo(); canvas.focus(); });
+  document.getElementById('btnRedo').addEventListener('click', () => { if (window.isReplaying) return; redo(); canvas.focus(); });
+  document.getElementById('btnRestart').addEventListener('click', () => { if (window.isReplaying) return; restartLevel(); canvas.focus(); });
+  document.getElementById('btnStopReplay').addEventListener('click', () => { window.stopReplay(); });
 
   document.getElementById('btnOverlayNext').addEventListener('click', () => {
+    if (window.isReplaying) return;
     if (gameStatus === 'victory') {
       const nextIdx = currentLevelIdx + 1;
       if (nextIdx < DEFAULT_LEVELS.length) {
@@ -317,6 +326,7 @@ function initGame() {
   });
 
   document.getElementById('btnOverlayRestart').addEventListener('click', () => {
+    if (window.isReplaying) return;
     restartLevel();
   });
 
@@ -388,10 +398,12 @@ function initGame() {
 
   // Bind Stage Select Navigation & Utility buttons
   document.getElementById('btnBackToMenu').addEventListener('click', () => {
+    if (window.isReplaying) return;
     showStageSelectMenu();
   });
 
   document.getElementById('btnOverlayMenu').addEventListener('click', () => {
+    if (window.isReplaying) return;
     document.getElementById('screenOverlay').classList.add('hidden');
     showStageSelectMenu();
   });
@@ -589,7 +601,8 @@ function updateHUD() {
 // Game Logic Simulation Engine
 // --------------------------------------------------------------------------
 
-function attemptMove(dx, dy) {
+function attemptMove(dx, dy, isReplayCall = false) {
+  if (window.isReplaying && !isReplayCall) return;
   if (gameStatus !== 'playing' || isAnimating || isEditorMode) return;
 
   // 1. Calculate direction tag
@@ -2435,6 +2448,13 @@ function drawGameplayConnections() {
 // --------------------------------------------------------------------------
 
 function handleKeyDown(e) {
+  if (window.isReplaying) {
+    if (e.key === 'Escape') {
+      window.stopReplay();
+    }
+    e.preventDefault();
+    return;
+  }
   if (!localStorage.getItem('runic_dungeon_user')) return; // Ignore controls if not logged in
   if (isEditorMode && !isCustomTestPlay()) return; // Ignore controls if sketching in editor
 
@@ -2493,6 +2513,7 @@ function setupTouchControls() {
   }, { passive: true });
 
   canvas.addEventListener('touchend', (e) => {
+    if (window.isReplaying) return;
     if (isEditorMode && !isCustomTestPlay()) return;
     
     const touchEndX = e.changedTouches[0].clientX;
@@ -2538,6 +2559,7 @@ function saveStateToHistory() {
 }
 
 function undo() {
+  if (window.isReplaying) return;
   if (gameStatus !== 'playing' || isAnimating || historyStack.length === 0) return;
 
   // Save current state to Redo Stack
@@ -2579,6 +2601,7 @@ function undo() {
 }
 
 function redo() {
+  if (window.isReplaying) return;
   if (gameStatus !== 'playing' || isAnimating || redoStack.length === 0) return;
 
   // Save current state to History Stack
@@ -2957,13 +2980,14 @@ async function showLeaderboardModal() {
               hasAnyRecord = true;
               const levelName = lvl.name.split('. ')[1] || lvl.name;
               const pathDisplay = rec.path 
-                ? `<code style="color: #ffea00; font-family: monospace; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; word-break: break-all; letter-spacing: 1px;">${rec.path}</code>` 
+                ? `<code style="color: #ffea00; font-family: monospace; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; word-break: break-all; letter-spacing: 1px;">${rec.path}</code>` +
+                  ` <span style="cursor: pointer; background: var(--color-primary); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; margin-left: 5px; box-shadow: 0 0 4px var(--color-primary); user-select: none;" onclick="window.startReplay('${u}', ${idx}, '${rec.path}')">▶ 재생</span>`
                 : `<span style="color: var(--text-muted); font-style: italic;">[경로 기록 없음]</span>`;
               
-              userPaths.push(`<div style="margin-bottom: 6px; padding-left: 10px; border-left: 2px solid var(--color-primary);">` +
-                `<span style="color: var(--color-primary); font-weight: bold;">${idx+1}층 (${levelName}):</span> ` +
-                `${pathDisplay}` +
-                ` <span style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, ${rec.stars}★)</span>` +
+              userPaths.push(`<div style="margin-bottom: 6px; padding-left: 10px; border-left: 2px solid var(--color-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">` +
+                `<div><span style="color: var(--color-primary); font-weight: bold;">${idx+1}층 (${levelName}):</span> ` +
+                `${pathDisplay}</div>` +
+                ` <div style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, ${rec.stars}★)</div>` +
                 `</div>`);
             }
           });
@@ -3030,6 +3054,110 @@ async function deleteUserRecord(username) {
 }
 
 window.deleteUserRecord = deleteUserRecord;
+
+// Replay Playback Engine Functions
+window.startReplay = function(username, stageIdx, pathString) {
+  if (window.isReplaying) return;
+  if (!pathString) {
+    alert("해당 층은 클리어 경로 기록이 없어 재생할 수 없습니다.");
+    return;
+  }
+  
+  window.replayOriginalLevelIdx = currentLevelIdx;
+  
+  // Close leaderboard modal
+  const leaderboardModal = document.getElementById('leaderboardModal');
+  if (leaderboardModal) leaderboardModal.classList.add('hidden');
+  
+  window.isReplaying = true;
+  window.replayPath = pathString.split('');
+  window.replayIndex = 0;
+  
+  // Load target level
+  loadLevel(stageIdx);
+  
+  // Show replay overlay
+  const replayOverlay = document.getElementById('replayOverlay');
+  const replayInfo = document.getElementById('replayInfo');
+  const replayStepText = document.getElementById('replayStepText');
+  
+  if (replayOverlay) replayOverlay.classList.remove('hidden');
+  if (replayInfo) {
+    const levelName = DEFAULT_LEVELS[stageIdx].name.split('. ')[1] || DEFAULT_LEVELS[stageIdx].name;
+    replayInfo.textContent = `${username} 모험가 - ${stageIdx + 1}층 (${levelName})`;
+  }
+  if (replayStepText) {
+    replayStepText.textContent = `[0 / ${window.replayPath.length}]`;
+  }
+  
+  // Start playback steps loop
+  window.replayTimeoutId = setTimeout(executeReplayStep, 800);
+};
+
+window.stopReplay = function() {
+  if (!window.isReplaying) return;
+  window.isReplaying = false;
+  
+  if (window.replayTimeoutId) {
+    clearTimeout(window.replayTimeoutId);
+    window.replayTimeoutId = null;
+  }
+  
+  // Hide replay overlay
+  const replayOverlay = document.getElementById('replayOverlay');
+  if (replayOverlay) replayOverlay.classList.add('hidden');
+  
+  // Restore original stage select level
+  if (window.replayOriginalLevelIdx !== undefined) {
+    loadLevel(window.replayOriginalLevelIdx);
+  }
+  
+  // Re-open leaderboard modal
+  const leaderboardModal = document.getElementById('leaderboardModal');
+  if (leaderboardModal) leaderboardModal.classList.remove('hidden');
+};
+
+function executeReplayStep() {
+  if (!window.isReplaying) return;
+  
+  if (isAnimating) {
+    // Poll animation state again shortly
+    window.replayTimeoutId = setTimeout(executeReplayStep, 50);
+    return;
+  }
+  
+  if (gameStatus !== 'playing') {
+    // If the game reaches victory or fail state, stop replay shortly
+    window.replayTimeoutId = setTimeout(window.stopReplay, 1500);
+    return;
+  }
+  
+  if (window.replayIndex < window.replayPath.length) {
+    const dir = window.replayPath[window.replayIndex];
+    let dx = 0, dy = 0;
+    if (dir === 'R') dx = 1;
+    else if (dir === 'L') dx = -1;
+    else if (dir === 'D') dy = 1;
+    else if (dir === 'U') dy = -1;
+    
+    window.replayIndex++;
+    
+    // Update step counters
+    const stepText = document.getElementById('replayStepText');
+    if (stepText) {
+      stepText.textContent = `[${window.replayIndex} / ${window.replayPath.length}]`;
+    }
+    
+    // Trigger movement simulation bypass
+    attemptMove(dx, dy, true);
+    
+    // Wait for animation frame delay to check again
+    window.replayTimeoutId = setTimeout(executeReplayStep, 700);
+  } else {
+    // End of recorded path
+    window.replayTimeoutId = setTimeout(window.stopReplay, 1500);
+  }
+}
 
 function getUserIcon(username) {
   if (username === '엽이') {

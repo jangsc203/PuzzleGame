@@ -132,6 +132,18 @@
             </div>
           </div>
         </div>
+        <!-- 플레이 재상영 오버레이 -->
+        <div id="replayOverlay" class="replay-overlay hidden" style="position: absolute; top: 20px; left: 20px; right: 20px; background: rgba(10, 15, 30, 0.95); border: 2px solid var(--color-primary); border-radius: 12px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 0 25px rgba(0, 229, 255, 0.45); backdrop-filter: blur(10px); z-index: 1000; color: #fff; font-family: var(--font-body); font-size: 0.85rem;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="color: var(--color-primary); font-weight: bold; display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 10px; height: 10px; background: #00e676; border-radius: 50%; animation: pulse 1s infinite alternate;"></span>
+              재상영 중 (Replaying)
+            </span>
+            <span id="replayInfo" style="color: #fff; font-weight: bold; font-size: 0.9rem;">엽이 모험가 - 1층</span>
+            <span id="replayStepText" style="color: #ffea00; font-family: monospace; font-size: 0.85rem; background: rgba(255, 255, 255, 0.1); padding: 3px 8px; border-radius: 4px; font-weight: bold; letter-spacing: 1px;">[0 / 0]</span>
+          </div>
+          <button id="btnStopReplay" class="btn btn-danger" style="margin: 0; padding: 6px 14px; font-size: 0.8rem; border: none; cursor: pointer; border-radius: 6px; background: #ff1744; box-shadow: 0 0 10px rgba(255, 23, 68, 0.4); font-weight: bold; color: white;">재생 중지 (ESC)</button>
+        </div>
       </div>
     </section>
 

@@ -1749,3 +1749,8 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+@keyframes pulse {
+  0% { transform: scale(0.8); opacity: 0.6; box-shadow: 0 0 4px #00e676; }
+  100% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px #00e676; }
+}
