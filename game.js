@@ -238,6 +238,7 @@ let boxes = []; // [{id, x, y, animX, animY, active}]
 // Undo/Redo Stacks
 let historyStack = [];
 let redoStack = [];
+let clearPath = []; // Records directions taken by player to clear level (e.g. ['L', 'U', 'R', ...])
 
 // Animation States
 let isAnimating = false;
@@ -442,6 +443,7 @@ function initGame() {
 function loadLevel(index, customLevelData = null) {
   historyStack = [];
   redoStack = [];
+  clearPath = [];
   animationQueue = [];
   activeSpikesAnim = {};
   isAnimating = false;
@@ -610,6 +612,16 @@ function attemptMove(dx, dy) {
     return;
   }
 
+  // Record direction key
+  let dirChar = '';
+  if (dx === 1) dirChar = 'R';
+  else if (dx === -1) dirChar = 'L';
+  else if (dy === 1) dirChar = 'D';
+  else if (dy === -1) dirChar = 'U';
+  if (dirChar) {
+    clearPath.push(dirChar);
+  }
+
   // 4. Update Logical States based on Simulation Results
   player.x = sim.endPlayerX;
   player.y = sim.endPlayerY;
@@ -744,7 +756,7 @@ function simulateMove(dx, dy) {
     simSpikesUp = !simSpikesUp; // Spike state toggles
     
     if (simGrid[nextPY][nextPX] === 'T' && simSpikesUp) {
-      curAP -= 5;
+      curAP -= 10;
       playerSteps.push({ x: nextPX, y: nextPY, action: 'spike' });
       soundsToPlay.push({ delay: 50, type: 'spike' });
     } else {
@@ -850,7 +862,7 @@ function simulateMove(dx, dy) {
         }
 
         if (simGrid[py][px] === 'T' && simSpikesUp) {
-          curAP -= 5;
+          curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
         } else {
@@ -881,7 +893,7 @@ function simulateMove(dx, dy) {
       soundsToPlay.push({ delay: 100, type: 'fail' });
     } else if (simGrid[py][px] === 'I') {
       if (simGrid[py][px] === 'T' && simSpikesUp) {
-        curAP -= 5;
+        curAP -= 10;
         playerSteps.push({ x: px, y: py, action: 'spike' });
         soundsToPlay.push({ delay: 50, type: 'spike' });
       } else {
@@ -915,7 +927,7 @@ function simulateMove(dx, dy) {
         }
 
         if (simGrid[py][px] === 'T' && simSpikesUp) {
-          curAP -= 5;
+          curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
         } else {
@@ -925,7 +937,7 @@ function simulateMove(dx, dy) {
         if (simGrid[py][px] !== 'I') break;
       }
     } else if (simGrid[py][px] === 'T' && simSpikesUp) {
-      curAP -= 5;
+      curAP -= 10;
       playerSteps.push({ x: px, y: py, action: 'spike' });
       soundsToPlay.push({ delay: 50, type: 'spike' });
     } else {
@@ -2518,7 +2530,8 @@ function saveStateToHistory() {
     ap: remainingAP,
     moves: moveCount,
     activeSticky: new Set(activeStickySwitches),
-    spikesUp: spikesUp
+    spikesUp: spikesUp,
+    clearPath: [...clearPath]
   };
   historyStack.push(state);
   redoStack = []; // Clear redo stack on new action
@@ -2535,7 +2548,8 @@ function undo() {
     ap: remainingAP,
     moves: moveCount,
     activeSticky: new Set(activeStickySwitches),
-    spikesUp: spikesUp
+    spikesUp: spikesUp,
+    clearPath: [...clearPath]
   };
   redoStack.push(current);
 
@@ -2557,6 +2571,7 @@ function undo() {
   moveCount = prev.moves;
   activeStickySwitches = new Set(prev.activeSticky);
   spikesUp = prev.spikesUp;
+  clearPath = [...prev.clearPath];
 
   updateSwitchesAndDoors();
   updateHUD();
@@ -2574,7 +2589,8 @@ function redo() {
     ap: remainingAP,
     moves: moveCount,
     activeSticky: new Set(activeStickySwitches),
-    spikesUp: spikesUp
+    spikesUp: spikesUp,
+    clearPath: [...clearPath]
   };
   historyStack.push(current);
 
@@ -2596,6 +2612,7 @@ function redo() {
   moveCount = next.moves;
   activeStickySwitches = new Set(next.activeSticky);
   spikesUp = next.spikesUp;
+  clearPath = [...next.clearPath];
 
   updateSwitchesAndDoors();
   updateHUD();
@@ -2632,7 +2649,7 @@ function saveBestRecord(levelIdx, stars, moves) {
     }
   }
   if (shouldUpdate) {
-    localStorage.setItem(`runic_dungeon_best_record_${levelIdx}`, JSON.stringify({ stars, moves }));
+    localStorage.setItem(`runic_dungeon_best_record_${levelIdx}`, JSON.stringify({ stars, moves, path: clearPath.join('') }));
     
     // Cloud sync upload
     const username = localStorage.getItem('runic_dungeon_user');
@@ -2820,7 +2837,15 @@ async function syncUserRecordsFromCloud(username) {
           renderStageSelectGrid();
         }
       } else {
-        uploadUserRecordsCloud(username);
+        // Cloud has no records for this user (either deleted or new user)
+        // Clear local records to prevent re-uploading deleted progress
+        DEFAULT_LEVELS.forEach((_, idx) => {
+          localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
+        });
+        updateRecordHUD();
+        if (!document.getElementById('stageSelectOverlay').classList.contains('hidden')) {
+          renderStageSelectGrid();
+        }
       }
     }
   } catch (e) {
@@ -2910,12 +2935,101 @@ async function showLeaderboardModal() {
       `;
       tbody.appendChild(row);
     });
+
+    // Render Admin Path View Panel if the logged user is '관리자'
+    const adminPathView = document.getElementById('adminPathView');
+    const adminPathList = document.getElementById('adminPathList');
+    if (adminPathView && adminPathList) {
+      if (currentLoggedUser === '관리자') {
+        adminPathView.classList.remove('hidden');
+        
+        const allUsers = Object.keys(USER_PASSWORDS);
+        let pathHtml = '';
+        
+        allUsers.forEach(u => {
+          const userRecords = dbData[u] || {};
+          let userPaths = [];
+          let hasAnyRecord = false;
+          
+          DEFAULT_LEVELS.forEach((lvl, idx) => {
+            const rec = userRecords[idx];
+            if (rec) {
+              hasAnyRecord = true;
+              const levelName = lvl.name.split('. ')[1] || lvl.name;
+              const pathDisplay = rec.path 
+                ? `<code style="color: #ffea00; font-family: monospace; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; word-break: break-all; letter-spacing: 1px;">${rec.path}</code>` 
+                : `<span style="color: var(--text-muted); font-style: italic;">[경로 기록 없음]</span>`;
+              
+              userPaths.push(`<div style="margin-bottom: 6px; padding-left: 10px; border-left: 2px solid var(--color-primary);">` +
+                `<span style="color: var(--color-primary); font-weight: bold;">${idx+1}층 (${levelName}):</span> ` +
+                `${pathDisplay}` +
+                ` <span style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, ${rec.stars}★)</span>` +
+                `</div>`);
+            }
+          });
+          
+          if (hasAnyRecord) {
+            pathHtml += `<div style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">`;
+            pathHtml += `<div style="font-weight: bold; color: #fff; margin-bottom: 8px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 6px;">` +
+              `<div style="display: flex; align-items: center; gap: 6px;"><span>${getUserIcon(u)}</span><span>${u} 모험가</span></div>` +
+              `<button onclick="window.deleteUserRecord('${u}')" class="btn btn-danger" style="padding: 2px 8px; font-size: 0.7rem; height: auto; line-height: 1.2; font-family: var(--font-body); margin: 0; background: #ff1744; border-radius: 4px; border: none; box-shadow: 0 0 5px rgba(255, 23, 68, 0.4); cursor: pointer; color: white;">기록 삭제</button>` +
+              `</div>`;
+            pathHtml += userPaths.join('');
+            pathHtml += `</div>`;
+          }
+        });
+        
+        adminPathList.innerHTML = pathHtml || '<div style="color: var(--text-muted); text-align: center; padding: 10px;">아직 업로드된 클리어 경로 데이터가 없습니다.</div>';
+      } else {
+        adminPathView.classList.add('hidden');
+      }
+    }
     
   } catch (e) {
     console.error('Error fetching leaderboard:', e);
     tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
   }
 }
+
+async function deleteUserRecord(username) {
+  if (!confirm(`${username} 모험가의 모든 클리어 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 해당 모험가의 로컬 기록도 다음 로그인 시 초기화됩니다.`)) {
+    return;
+  }
+  
+  try {
+    const res = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}?t=${Date.now()}`);
+    let dbData = {};
+    if (res.ok) {
+      const obj = await res.json();
+      dbData = obj.data || {};
+    }
+    
+    if (dbData[username]) {
+      delete dbData[username];
+    }
+    
+    const putRes = await fetch(`https://api.restful-api.dev/objects/${DB_OBJECT_ID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: "RunicDungeonLeaderboard",
+        data: dbData
+      })
+    });
+    
+    if (putRes.ok) {
+      alert(`${username} 모험가의 기록이 삭제되었습니다.`);
+      showLeaderboardModal();
+    } else {
+      alert('기록 삭제 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    }
+  } catch (e) {
+    console.error('Error deleting user record:', e);
+    alert('서버 통신 중 오류가 발생했습니다.');
+  }
+}
+
+window.deleteUserRecord = deleteUserRecord;
 
 function getUserIcon(username) {
   if (username === '엽이') {
