@@ -43,7 +43,7 @@ const DEFAULT_LEVELS = [
     width: 9,
     height: 7,
     maxAP: 45,
-    optimalAP: 32,
+    optimalAP: 35,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", ".", "G", ".", "T", ".", "G", ".", "W"],
