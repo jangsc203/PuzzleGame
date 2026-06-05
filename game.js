@@ -878,6 +878,7 @@ function simulateMove(dx, dy) {
           curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
+          break; // Stop sliding since player dies
         } else {
           playerSteps.push({ x: px, y: py, action: 'slide' });
         }
@@ -943,6 +944,7 @@ function simulateMove(dx, dy) {
           curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
+          break; // Stop sliding since player dies
         } else {
           playerSteps.push({ x: px, y: py, action: 'slide' });
         }
@@ -1309,6 +1311,11 @@ function checkVictoryOrLoss() {
     gameStatus = 'gameover';
     sound.playFail();
     const reason = "심연의 구덩이 속으로 추락했습니다.";
+    showOverlay("GAME OVER", reason, true);
+  } else if (boardGrid[player.y][player.x] === 'T' && spikesUp) {
+    gameStatus = 'gameover';
+    sound.playFail();
+    const reason = "날카로운 가시에 찔렸습니다!";
     showOverlay("GAME OVER", reason, true);
   }
 }
@@ -2808,6 +2815,7 @@ function logout() {
 
 const DB_OBJECT_ID = '9e762e1a';
 const DB_EDIT_KEY = 'e1604ec46cb395e7662360f0a8e88b85ac38ac5a1681e23d2180a8aee6f321f7';
+const CORS_PROXY_URL = 'https://solitary-frog-b23f.jangsc203.workers.dev/';
 
 async function uploadUserRecordsCloud(username) {
   try {
@@ -2822,7 +2830,9 @@ async function uploadUserRecordsCloud(username) {
     let dbData = {};
     let fetchSuccess = false;
     try {
-      const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
+      const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+      const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+      const res = await fetch(proxiedUrl);
       if (res.ok) {
         const obj = await res.json();
         dbData = obj.data || {};
@@ -2842,7 +2852,9 @@ async function uploadUserRecordsCloud(username) {
 
     dbData[username] = userRecords;
 
-    const patchRes = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`, {
+    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
+    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
+    const putRes = await fetch(proxiedPutUrl, {
       method: 'PATCH',
       headers: { 
         'Content-Type': 'application/json',
@@ -2853,8 +2865,8 @@ async function uploadUserRecordsCloud(username) {
         data: dbData
       })
     });
-    if (!patchRes.ok) {
-      console.error("Failed to patch DB on upload:", patchRes.status);
+    if (!putRes.ok) {
+      console.error("Failed to update DB on upload:", putRes.status);
     }
   } catch (e) {
     console.error('Cloud upload error:', e);
@@ -2863,10 +2875,13 @@ async function uploadUserRecordsCloud(username) {
 
 async function syncUserRecordsFromCloud(username) {
   try {
-    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
     if (res.ok) {
-      const dbData = await res.json();
-      const userRecords = (dbData.data && dbData.data[username]) || null;
+      const obj = await res.json();
+      const dbData = obj.data || {};
+      const userRecords = dbData[username];
       
       if (userRecords) {
         DEFAULT_LEVELS.forEach((_, idx) => {
@@ -2909,7 +2924,9 @@ async function showLeaderboardModal() {
   const currentLoggedUser = localStorage.getItem('runic_dungeon_user');
   
   try {
-    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
     let dbData = {};
     if (res.ok) {
       const obj = await res.json();
@@ -3048,7 +3065,9 @@ async function deleteUserRecord(username) {
   }
   
   try {
-    const res = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`);
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
     let dbData = {};
     if (res.ok) {
       const obj = await res.json();
@@ -3062,7 +3081,9 @@ async function deleteUserRecord(username) {
       delete dbData[username];
     }
     
-    const patchRes = await fetch(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`, {
+    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
+    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
+    const putRes = await fetch(proxiedPutUrl, {
       method: 'PATCH',
       headers: { 
         'Content-Type': 'application/json',
@@ -3074,7 +3095,7 @@ async function deleteUserRecord(username) {
       })
     });
     
-    if (patchRes.ok) {
+    if (putRes.ok) {
       alert(`${username} 모험가의 기록이 삭제되었습니다.`);
       showLeaderboardModal();
     } else {
