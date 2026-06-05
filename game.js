@@ -2665,9 +2665,14 @@ function saveBestRecord(levelIdx, stars, moves) {
   if (!currentBest) {
     shouldUpdate = true;
   } else {
+    // Robust moves parsing to handle legacy string data like "21이동" or "21 Move"
+    const currentBestMoves = parseInt(String(currentBest.moves).replace(/[^0-9]/g, ''), 10) || 0;
     if (stars > currentBest.stars) {
       shouldUpdate = true;
-    } else if (stars === currentBest.stars && moves < currentBest.moves) {
+    } else if (stars === currentBest.stars && moves < currentBestMoves) {
+      shouldUpdate = true;
+    } else if (stars === currentBest.stars && moves === currentBestMoves) {
+      // Same stars and same moves: always allow updating to save/update the path!
       shouldUpdate = true;
     }
   }
@@ -2903,7 +2908,7 @@ async function showLeaderboardModal() {
         const rec = userRecords[idx];
         if (rec) {
           totalStars += parseInt(rec.stars, 10) || 0;
-          const moveVal = parseInt(String(rec.moves).replace('이동', '').trim(), 10) || 0;
+          const moveVal = parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0;
           totalMoves += moveVal;
           clearedStages.push(idx + 1);
         }
