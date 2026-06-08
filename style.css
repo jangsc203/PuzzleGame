@@ -509,6 +509,73 @@ body {
   padding: 0;
 }
 
+/* Sound & Volume Control dropdown styling */
+.sound-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.volume-slider-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 8px 12px;
+  background: rgba(10, 15, 30, 0.95);
+  border: 1px solid var(--border-glass);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 176, 255, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  width: 155px;
+  opacity: 1;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.volume-slider-dropdown.hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translate(-50%, -10px) !important;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 8px var(--color-primary);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+
+.volume-text {
+  font-family: var(--font-title);
+  font-size: 0.75rem;
+  color: #fff;
+  min-width: 35px;
+  text-align: right;
+}
+
 /* Canvas Container */
 .canvas-container {
   position: relative;
@@ -1050,6 +1117,7 @@ body {
   text-align: right;
   display: inline-block;
   white-space: nowrap;
+}
 .stage-select-record-box {
   margin-top: 10px;
   background: rgba(255, 255, 255, 0.02);
@@ -1309,7 +1377,7 @@ body {
   
   .canvas-container {
     flex-grow: 0 !important;
-    flex-shrink: 1 !important;
+    flex-shrink: 0 !important;
     width: 92% !important;
     max-width: 400px !important;
     height: auto !important;
@@ -1922,6 +1990,13 @@ body {
     max-height: 92dvh !important;
     overflow-y: auto !important;
     margin: auto !important;
+  }
+
+  .login-box > *, 
+  .chapter-select-box > *, 
+  .stage-select-box > *, 
+  .modal-content > * {
+    flex-shrink: 0 !important;
   }
 
   /* Titles & Subtitles */

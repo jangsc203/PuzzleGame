@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=32">
+  <link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -37,9 +37,15 @@
         <button id="btnLeaderboard" class="icon-btn tooltip hidden" data-tooltip="순위표 보기">
           <span class="icon">🏆</span>
         </button>
-        <button id="btnSoundToggle" class="icon-btn tooltip" data-tooltip="사운드 켜기/끄기">
-          <span class="icon">🔊</span>
-        </button>
+        <div class="sound-wrapper">
+          <button id="btnSoundToggle" class="icon-btn tooltip" data-tooltip="사운드 조절">
+            <span class="icon">🔊</span>
+          </button>
+          <div id="volumeDropdownHeader" class="volume-slider-dropdown hidden">
+            <input type="range" class="volume-slider" min="0" max="100" value="40">
+            <span class="volume-text">40%</span>
+          </div>
+        </div>
         <button id="btnHelpToggle" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
           <span class="icon">❓</span>
         </button>
@@ -295,9 +301,15 @@
         <button id="btnChapterSelectLeaderboard" class="icon-btn tooltip" data-tooltip="순위표 보기">
           <span class="icon">🏆</span>
         </button>
-        <button id="btnChapterSelectSound" class="icon-btn tooltip" data-tooltip="사운드 켜기/끄기">
-          <span class="icon">🔊</span>
-        </button>
+        <div class="sound-wrapper">
+          <button id="btnChapterSelectSound" class="icon-btn tooltip" data-tooltip="사운드 조절">
+            <span class="icon">🔊</span>
+          </button>
+          <div id="volumeDropdownFooter" class="volume-slider-dropdown hidden">
+            <input type="range" class="volume-slider" min="0" max="100" value="40">
+            <span class="volume-text">40%</span>
+          </div>
+        </div>
         <button id="btnChapterSelectHelp" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
           <span class="icon">❓</span>
         </button>
@@ -431,6 +443,6 @@
   </div>
 
   <script src="levels.js?v=15"></script>
-  <script src="game.js?v=49"></script>
+  <script src="game.js?v=51"></script>
 </body>
 </html>

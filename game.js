@@ -3,6 +3,7 @@
    ========================================================================== */
 
 // Audio Synthesizer via Web Audio API
+// Audio Synthesizer via Web Audio API
 class SoundSynth {
   constructor() {
     this.ctx = null;
@@ -14,6 +15,14 @@ class SoundSynth {
     this.notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]; // C4 to C5
     this.melody = [0, 2, 4, 5, 4, 2, 0, 4, 7, 6, 4, 5, 7, 4, 2, 0];
     this.melodyIdx = 0;
+    
+    // Set dynamic volume: quieter on desktop (0.35), louder on mobile (1.0)
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 900;
+    const savedVol = localStorage.getItem('runic_dungeon_volume');
+    this.volume = savedVol !== null ? parseFloat(savedVol) : (isMobile ? 1.0 : 0.35);
+    if (this.volume === 0) {
+      this.muted = true;
+    }
   }
 
   init() {
@@ -60,7 +69,7 @@ class SoundSynth {
         osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
       }
       
-      gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+      gain.gain.setValueAtTime(volume * this.volume, this.ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
       
       osc.connect(gain);
@@ -100,7 +109,7 @@ class SoundSynth {
       filter.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.3);
 
       const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.setValueAtTime(0.3 * this.volume, this.ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
 
       noise.connect(filter);
@@ -295,27 +304,84 @@ function initGame() {
     canvas.focus();
   });
 
-  // Controls UI binding
-  function updateSoundToggleUI(muted) {
-    const iconHtml = `<span class="icon">${muted ? '🔇' : '🔊'}</span>`;
+  // Controls UI binding with Volume Slider Dropdown
+  const volumeSliders = document.querySelectorAll('.volume-slider');
+  const volumeTexts = document.querySelectorAll('.volume-text');
+  
+  function updateSoundUI() {
+    const isMuted = sound.muted || sound.volume === 0;
+    const iconHtml = `<span class="icon">${isMuted ? '🔇' : '🔊'}</span>`;
     const headerBtn = document.getElementById('btnSoundToggle');
     const footerBtn = document.getElementById('btnChapterSelectSound');
     if (headerBtn) headerBtn.innerHTML = iconHtml;
     if (footerBtn) footerBtn.innerHTML = iconHtml;
+    
+    const volPercent = Math.round(sound.volume * 100);
+    volumeSliders.forEach(slider => {
+      slider.value = volPercent;
+    });
+    volumeTexts.forEach(txt => {
+      txt.textContent = `${volPercent}%`;
+    });
   }
 
-  document.getElementById('btnSoundToggle').addEventListener('click', () => {
-    const muted = sound.toggle();
-    updateSoundToggleUI(muted);
+  // Initialize UI state
+  updateSoundUI();
+
+  // Toggle dropdown logic
+  function toggleDropdown(dropdownId, oppositeDropdownId) {
+    sound.init();
+    const dropdown = document.getElementById(dropdownId);
+    const oppositeDropdown = document.getElementById(oppositeDropdownId);
+    if (dropdown) dropdown.classList.toggle('hidden');
+    if (oppositeDropdown) oppositeDropdown.classList.add('hidden');
+  }
+
+  document.getElementById('btnSoundToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDropdown('volumeDropdownHeader', 'volumeDropdownFooter');
   });
 
   const footerSoundBtn = document.getElementById('btnChapterSelectSound');
   if (footerSoundBtn) {
-    footerSoundBtn.addEventListener('click', () => {
-      const muted = sound.toggle();
-      updateSoundToggleUI(muted);
+    footerSoundBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDropdown('volumeDropdownFooter', 'volumeDropdownHeader');
     });
   }
+
+  // Sliders input handling
+  volumeSliders.forEach(slider => {
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      sound.volume = val / 100;
+      localStorage.setItem('runic_dungeon_volume', sound.volume);
+      
+      if (val === 0) {
+        sound.muted = true;
+        sound.stopBGM();
+      } else {
+        sound.muted = false;
+        if (!sound.bgmPlaying) {
+          sound.startBGM();
+        }
+      }
+      updateSoundUI();
+    });
+    // Stop event propagation to prevent closing dropdown when clicking/dragging the slider
+    slider.addEventListener('click', (e) => e.stopPropagation());
+    slider.addEventListener('touchstart', (e) => e.stopPropagation());
+  });
+
+  // Close sound dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.sound-wrapper')) {
+      const headerDropdown = document.getElementById('volumeDropdownHeader');
+      const footerDropdown = document.getElementById('volumeDropdownFooter');
+      if (headerDropdown) headerDropdown.classList.add('hidden');
+      if (footerDropdown) footerDropdown.classList.add('hidden');
+    }
+  });
 
   document.getElementById('btnHelpToggle').addEventListener('click', () => {
     if (window.isReplaying) return;
@@ -601,6 +667,7 @@ function resizeCanvas() {
 
   canvas.width = levelWidth * tileSize;
   canvas.height = levelHeight * tileSize;
+  canvas.style.aspectRatio = `${levelWidth} / ${levelHeight}`;
   
   offsetX = (canvas.width - levelWidth * tileSize) / 2;
   offsetY = (canvas.height - levelHeight * tileSize) / 2;
