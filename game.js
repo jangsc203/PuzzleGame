@@ -9,7 +9,7 @@ class SoundSynth {
     this.bgmOsc = null;
     this.bgmGain = null;
     this.bgmInterval = null;
-    this.muted = true;
+    this.muted = false;
     this.bgmPlaying = false;
     this.notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25]; // C4 to C5
     this.melody = [0, 2, 4, 5, 4, 2, 0, 4, 7, 6, 4, 5, 7, 4, 2, 0];
@@ -19,6 +19,17 @@ class SoundSynth {
   init() {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this.ctx && this.ctx.state === 'suspended' && typeof this.ctx.resume === 'function') {
+      this.ctx.resume().then(() => {
+        if (!this.muted && !this.bgmPlaying) {
+          this.startBGM();
+        }
+      }).catch(e => console.warn("Audio resume warning:", e));
+    } else {
+      if (!this.muted && !this.bgmPlaying) {
+        this.startBGM();
+      }
     }
   }
 
@@ -285,15 +296,39 @@ function initGame() {
   });
 
   // Controls UI binding
+  function updateSoundToggleUI(muted) {
+    const iconHtml = `<span class="icon">${muted ? '🔇' : '🔊'}</span>`;
+    const headerBtn = document.getElementById('btnSoundToggle');
+    const footerBtn = document.getElementById('btnChapterSelectSound');
+    if (headerBtn) headerBtn.innerHTML = iconHtml;
+    if (footerBtn) footerBtn.innerHTML = iconHtml;
+  }
+
   document.getElementById('btnSoundToggle').addEventListener('click', () => {
     const muted = sound.toggle();
-    document.getElementById('btnSoundToggle').innerHTML = `<span class="icon">${muted ? '🔇' : '🔊'}</span>`;
+    updateSoundToggleUI(muted);
   });
+
+  const footerSoundBtn = document.getElementById('btnChapterSelectSound');
+  if (footerSoundBtn) {
+    footerSoundBtn.addEventListener('click', () => {
+      const muted = sound.toggle();
+      updateSoundToggleUI(muted);
+    });
+  }
 
   document.getElementById('btnHelpToggle').addEventListener('click', () => {
     if (window.isReplaying) return;
     document.getElementById('helpModal').classList.remove('hidden');
   });
+
+  const footerHelpBtn = document.getElementById('btnChapterSelectHelp');
+  if (footerHelpBtn) {
+    footerHelpBtn.addEventListener('click', () => {
+      if (window.isReplaying) return;
+      document.getElementById('helpModal').classList.remove('hidden');
+    });
+  }
 
   document.getElementById('btnHelpClose').addEventListener('click', () => {
     document.getElementById('helpModal').classList.add('hidden');
@@ -423,6 +458,7 @@ function initGame() {
 
   // Bind Chapter Selection Event Listeners
   document.getElementById('chapterCard1').addEventListener('click', () => {
+    sound.init();
     document.getElementById('chapterSelectOverlay').classList.add('hidden');
     showStageSelectMenu();
   });
@@ -450,6 +486,19 @@ function initGame() {
 
   // Check initial login state
   checkLoginState();
+
+  // Global listener to auto-start sound on first user interaction (resolves browser autoplay block on refresh)
+  const startAudioOnFirstInteraction = () => {
+    sound.init();
+    if (sound.ctx && sound.ctx.state === 'running') {
+      document.removeEventListener('click', startAudioOnFirstInteraction);
+      document.removeEventListener('keydown', startAudioOnFirstInteraction);
+      document.removeEventListener('touchstart', startAudioOnFirstInteraction);
+    }
+  };
+  document.addEventListener('click', startAudioOnFirstInteraction, { passive: true });
+  document.addEventListener('keydown', startAudioOnFirstInteraction, { passive: true });
+  document.addEventListener('touchstart', startAudioOnFirstInteraction, { passive: true });
 }
 
 function loadLevel(index, customLevelData = null) {
@@ -2510,16 +2559,38 @@ function handleKeyDown(e) {
   }
 }
 
+function isGameActive() {
+  const login = document.getElementById('loginOverlay');
+  const chapter = document.getElementById('chapterSelectOverlay');
+  const stage = document.getElementById('stageSelectOverlay');
+  const leaderboard = document.getElementById('leaderboardModal');
+  const help = document.getElementById('helpModal');
+  
+  return (!login || login.classList.contains('hidden')) &&
+         (!chapter || chapter.classList.contains('hidden')) &&
+         (!stage || stage.classList.contains('hidden')) &&
+         (!leaderboard || leaderboard.classList.contains('hidden')) &&
+         (!help || help.classList.contains('hidden'));
+}
+
 function setupTouchControls() {
   let touchStartX = 0;
   let touchStartY = 0;
 
-  canvas.addEventListener('touchstart', (e) => {
+  document.addEventListener('touchstart', (e) => {
+    if (!isGameActive()) return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
   }, { passive: true });
 
-  canvas.addEventListener('touchend', (e) => {
+  document.addEventListener('touchmove', (e) => {
+    if (isGameActive()) {
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', (e) => {
+    if (!isGameActive()) return;
     if (window.isReplaying) return;
     if (isEditorMode && !isCustomTestPlay()) return;
     
@@ -2669,6 +2740,8 @@ function getBestRecord(levelIdx) {
 function saveBestRecord(levelIdx, stars, moves) {
   const currentBest = getBestRecord(levelIdx);
   let shouldUpdate = false;
+  let timestamp = Date.now();
+  
   if (!currentBest) {
     shouldUpdate = true;
   } else {
@@ -2681,10 +2754,19 @@ function saveBestRecord(levelIdx, stars, moves) {
     } else if (stars === currentBest.stars && moves === currentBestMoves) {
       // Same stars and same moves: always allow updating to save/update the path!
       shouldUpdate = true;
+      if (currentBest.timestamp) {
+        timestamp = currentBest.timestamp;
+      }
     }
   }
+  
   if (shouldUpdate) {
-    localStorage.setItem(`runic_dungeon_best_record_${levelIdx}`, JSON.stringify({ stars, moves, path: clearPath.join('') }));
+    localStorage.setItem(`runic_dungeon_best_record_${levelIdx}`, JSON.stringify({ 
+      stars, 
+      moves, 
+      path: clearPath.join(''),
+      timestamp 
+    }));
     
     // Cloud sync upload
     const username = localStorage.getItem('runic_dungeon_user');
@@ -2791,6 +2873,7 @@ function attemptLogin(username, password) {
   
   const correctPass = USER_PASSWORDS[username];
   if (correctPass && password === correctPass) {
+    sound.init();
     hideLoginOverlay(username);
     syncUserRecordsFromCloud(username);
     showChapterSelectMenu();
@@ -2942,6 +3025,7 @@ async function showLeaderboardModal() {
       let totalStars = 0;
       let totalMoves = 0;
       let clearedStages = [];
+      let latestClearTime = 0;
       
       DEFAULT_LEVELS.forEach((lvl, idx) => {
         const rec = userRecords[idx];
@@ -2950,6 +3034,13 @@ async function showLeaderboardModal() {
           const moveVal = parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0;
           totalMoves += moveVal;
           clearedStages.push(idx + 1);
+          
+          if (rec.timestamp) {
+            const t = parseInt(rec.timestamp, 10) || 0;
+            if (t > latestClearTime) {
+              latestClearTime = t;
+            }
+          }
         }
       });
       
@@ -2962,7 +3053,8 @@ async function showLeaderboardModal() {
         totalMoves,
         avgMoves: parseFloat(avgMoves),
         clearedStages: clearedStages.join(', ') || '-',
-        numCleared
+        numCleared,
+        latestClearTime
       };
     });
     
@@ -2977,7 +3069,17 @@ async function showLeaderboardModal() {
       if (a.totalMoves !== b.totalMoves) {
         return a.totalMoves - b.totalMoves;
       }
-      return a.avgMoves - b.avgMoves;
+      if (a.avgMoves !== b.avgMoves) {
+        return a.avgMoves - b.avgMoves;
+      }
+      
+      // Tie-breaker: earlier achievement time gets higher rank (0/legacy timestamps treated as older)
+      const timeA = a.latestClearTime || 1;
+      const timeB = b.latestClearTime || 1;
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return 0;
     });
     
     tbody.innerHTML = '';
@@ -3024,14 +3126,13 @@ async function showLeaderboardModal() {
               hasAnyRecord = true;
               const levelName = lvl.name.split('. ')[1] || lvl.name;
               const pathDisplay = rec.path 
-                ? `<code style="color: #ffea00; font-family: monospace; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; word-break: break-all; letter-spacing: 1px;">${rec.path}</code>` +
-                  ` <span style="cursor: pointer; background: var(--color-primary); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; margin-left: 5px; box-shadow: 0 0 4px var(--color-primary); user-select: none;" onclick="window.startReplay('${u}', ${idx}, '${rec.path}')">▶ 재생</span>`
+                ? ` <span style="cursor: pointer; background: var(--color-primary); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; margin-left: 5px; box-shadow: 0 0 4px var(--color-primary); user-select: none;" onclick="window.startReplay('${u}', ${idx}, '${rec.path}')">▶ 재생</span>`
                 : `<span style="color: var(--text-muted); font-style: italic;">[경로 기록 없음]</span>`;
               
               userPaths.push(`<div style="margin-bottom: 6px; padding-left: 10px; border-left: 2px solid var(--color-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">` +
                 `<div><span style="color: var(--color-primary); font-weight: bold;">${idx+1}층 (${levelName}):</span> ` +
                 `${pathDisplay}</div>` +
-                ` <div style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, ${rec.stars}★)</div>` +
+                ` <div style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, <span style="color: #ffea00; text-shadow: 0 0 3px rgba(255, 234, 0, 0.5); font-weight: bold;">${'★'.repeat(rec.stars)}</span>)</div>` +
                 `</div>`);
             }
           });

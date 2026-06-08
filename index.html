@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=24">
+  <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -291,10 +291,20 @@
         </div>
       </div>
       
-      <!-- 푸터 버튼 (순위표, 로그아웃) -->
+      <!-- 푸터 버튼 (순위표, 사운드, 도움말, 로그아웃) -->
       <div class="chapter-select-buttons">
-        <button id="btnChapterSelectLeaderboard" class="btn btn-secondary">🏆 순위표</button>
-        <button id="btnChapterSelectLogout" class="btn btn-danger">🚪 로그아웃</button>
+        <button id="btnChapterSelectLeaderboard" class="icon-btn tooltip" data-tooltip="순위표 보기">
+          <span class="icon">🏆</span>
+        </button>
+        <button id="btnChapterSelectSound" class="icon-btn tooltip" data-tooltip="사운드 켜기/끄기">
+          <span class="icon">🔊</span>
+        </button>
+        <button id="btnChapterSelectHelp" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
+          <span class="icon">❓</span>
+        </button>
+        <button id="btnChapterSelectLogout" class="icon-btn tooltip" data-tooltip="로그아웃">
+          <span class="icon">🚪</span>
+        </button>
       </div>
     </div>
   </div>
@@ -414,6 +424,6 @@
   </div>
 
   <script src="levels.js?v=13"></script>
-  <script src="game.js?v=35"></script>
+  <script src="game.js?v=42"></script>
 </body>
 </html>
