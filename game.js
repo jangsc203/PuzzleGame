@@ -499,6 +499,13 @@ function initGame() {
   document.addEventListener('click', startAudioOnFirstInteraction, { passive: true });
   document.addEventListener('keydown', startAudioOnFirstInteraction, { passive: true });
   document.addEventListener('touchstart', startAudioOnFirstInteraction, { passive: true });
+
+  // Handle window resizing and mobile orientation changes
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    updateHUD();
+    draw();
+  });
 }
 
 function loadLevel(index, customLevelData = null) {
@@ -617,6 +624,16 @@ function updateHUD() {
     const optimalAP = lvl.optimalAP || 0;
     const threeStarLimit = optimalAP;
     const twoStarLimit = Math.floor(optimalAP * 1.3);
+
+    const labelEl = document.getElementById('starCardLabel');
+    if (labelEl) {
+      const isMobile = window.innerWidth <= 900;
+      if (isMobile) {
+        labelEl.textContent = `별 3개까지: ${Math.max(0, threeStarLimit - spentAP)}`;
+      } else {
+        labelEl.textContent = '별 등급';
+      }
+    }
 
     let stars = 1;
     let statusText = "별 1개 확정";

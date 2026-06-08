@@ -1233,6 +1233,17 @@ body {
     white-space: nowrap !important;
   }
 
+  .hud-card .hud-stat {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   .hud-card .hud-value, 
   .stars-display {
     font-size: 0.85rem !important;
@@ -1242,6 +1253,12 @@ body {
   .stars-display {
     display: flex !important;
     gap: 2px !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+  }
+
+  .star-card .hud-label {
+    margin-bottom: 0 !important;
   }
 
   .star-ap-status {
