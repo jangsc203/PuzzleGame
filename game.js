@@ -151,11 +151,11 @@ class SoundSynth {
       const freq = this.notes[noteIdx % this.notes.length] * (noteIdx >= 8 ? 2 : 1);
       
       // Play soft bass note
-      this.playTone(freq / 2, 'triangle', 0.2, 0.04);
+      this.playTone(freq / 2, 'triangle', 0.2, 0.12);
       
       // Play arpeggiated lead on every fourth note
       if (this.melodyIdx % 4 === 0) {
-        this.playTone(freq, 'sine', 0.4, 0.02);
+        this.playTone(freq, 'sine', 0.4, 0.06);
       }
       
       this.melodyIdx = (this.melodyIdx + 1) % this.melody.length;
@@ -584,7 +584,12 @@ function loadLevel(index, customLevelData = null) {
 function resizeCanvas() {
   const container = canvas.parentElement;
   const containerW = container.clientWidth || 640;
-  const containerH = container.clientHeight || 480;
+  let containerH = container.clientHeight || 480;
+  
+  if (window.innerWidth <= 900) {
+    // On mobile, use 52vh as the height limit to prevent shrinking loops
+    containerH = window.innerHeight * 0.52;
+  }
   
   // Calculate tile size to fit grid comfortably
   const scaleX = containerW / levelWidth;
