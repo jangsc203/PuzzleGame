@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=30">
+  <link rel="stylesheet" href="style.css?v=31">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -321,6 +321,14 @@
         <!-- JS를 통해 5개의 스테이지 카드가 동적으로 생성됩니다. -->
       </div>
       
+      <!-- 스테이지별 최고기록 판넬 -->
+      <div class="stage-select-record-box">
+        <span class="record-title">🏆 개인 최고 기록</span>
+        <div class="record-list" id="stageSelectRecordList">
+          <!-- JS를 통해 동적 데이터가 주입됩니다. -->
+        </div>
+      </div>
+      
       <!-- 푸터 버튼 (뒤로가기, 순위표, 로그아웃) -->
       <div class="stage-select-buttons">
         <button id="btnStageSelectBackToChapters" class="btn btn-secondary">↩️ 챕터 선택</button>
@@ -423,6 +431,6 @@
   </div>
 
   <script src="levels.js?v=15"></script>
-  <script src="game.js?v=46"></script>
+  <script src="game.js?v=48"></script>
 </body>
 </html>

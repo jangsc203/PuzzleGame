@@ -151,11 +151,11 @@ class SoundSynth {
       const freq = this.notes[noteIdx % this.notes.length] * (noteIdx >= 8 ? 2 : 1);
       
       // Play soft bass note
-      this.playTone(freq / 2, 'triangle', 0.2, 0.12);
+      this.playTone(freq / 2, 'triangle', 0.22, 0.35);
       
       // Play arpeggiated lead on every fourth note
       if (this.melodyIdx % 4 === 0) {
-        this.playTone(freq, 'sine', 0.4, 0.06);
+        this.playTone(freq, 'triangle', 0.45, 0.20);
       }
       
       this.melodyIdx = (this.melodyIdx + 1) % this.melody.length;
@@ -587,8 +587,8 @@ function resizeCanvas() {
   let containerH = container.clientHeight || 480;
   
   if (window.innerWidth <= 900) {
-    // On mobile, use 52vh as the height limit to prevent shrinking loops
-    containerH = window.innerHeight * 0.52;
+    // On mobile, use 58vh as the height limit to prevent shrinking loops
+    containerH = window.innerHeight * 0.58;
   }
   
   // Calculate tile size to fit grid comfortably
@@ -2806,39 +2806,42 @@ function checkAllLevelsCleared() {
 }
 
 function updateRecordHUD() {
-  const recordList = document.getElementById('recordList');
-  if (!recordList) return;
-  
-  recordList.innerHTML = '';
-  DEFAULT_LEVELS.forEach((lvl, idx) => {
-    const best = getBestRecord(idx);
-    const isActive = idx === currentLevelIdx;
+  const ids = ['recordList', 'stageSelectRecordList'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
     
-    const row = document.createElement('div');
-    row.className = `record-row ${isActive ? 'active-level' : ''}`;
-    
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'record-level-name';
-    nameSpan.textContent = `${idx + 1}층: ${lvl.name.split('. ')[1] || lvl.name}`;
-    
-    const statsDiv = document.createElement('div');
-    statsDiv.className = 'record-stats';
-    
-    const starsSpan = document.createElement('span');
-    starsSpan.className = 'record-stars';
-    starsSpan.textContent = best ? '★'.repeat(best.stars) : '☆☆☆';
-    
-    const movesSpan = document.createElement('span');
-    movesSpan.className = 'record-moves';
-    const movesVal = best ? String(best.moves).replace('이동', '').trim() : '-';
-    movesSpan.textContent = movesVal;
-    
-    statsDiv.appendChild(starsSpan);
-    statsDiv.appendChild(movesSpan);
-    row.appendChild(nameSpan);
-    row.appendChild(statsDiv);
-    
-    recordList.appendChild(row);
+    el.innerHTML = '';
+    DEFAULT_LEVELS.forEach((lvl, idx) => {
+      const best = getBestRecord(idx);
+      const isActive = idx === currentLevelIdx;
+      
+      const row = document.createElement('div');
+      row.className = `record-row ${isActive ? 'active-level' : ''}`;
+      
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'record-level-name';
+      nameSpan.textContent = `${idx + 1}층: ${lvl.name.split('. ')[1] || lvl.name}`;
+      
+      const statsDiv = document.createElement('div');
+      statsDiv.className = 'record-stats';
+      
+      const starsSpan = document.createElement('span');
+      starsSpan.className = 'record-stars';
+      starsSpan.textContent = best ? '★'.repeat(best.stars) : '☆☆☆';
+      
+      const movesSpan = document.createElement('span');
+      movesSpan.className = 'record-moves';
+      const movesVal = best ? String(best.moves).replace('이동', '').trim() : '-';
+      movesSpan.textContent = movesVal;
+      
+      statsDiv.appendChild(starsSpan);
+      statsDiv.appendChild(movesSpan);
+      row.appendChild(nameSpan);
+      row.appendChild(statsDiv);
+      
+      el.appendChild(row);
+    });
   });
 }
 
