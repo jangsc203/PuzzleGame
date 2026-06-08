@@ -2873,7 +2873,7 @@ function checkAllLevelsCleared() {
 }
 
 function updateRecordHUD() {
-  const ids = ['recordList', 'stageSelectRecordList'];
+  const ids = ['recordList', 'mobileRecordList'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
