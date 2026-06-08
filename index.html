@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=26">
+  <link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -52,8 +52,11 @@
     <!-- 레벨 선택 및 설명 바 -->
     <section class="level-bar">
       <div class="level-select-wrapper">
-        <label for="levelSelect">스테이지: </label>
+        <label for="levelSelect" class="level-select-label">스테이지: </label>
         <select id="levelSelect" class="styled-select"></select>
+        <button id="btnBackToMenu" class="btn btn-secondary tooltip" data-tooltip="스테이지 선택 메뉴로 이동">
+          <span>🗺️ Menu</span>
+        </button>
       </div>
       <div class="level-info">
         <h2 id="levelName">레벨 이름</h2>
@@ -61,12 +64,8 @@
       </div>
     </section>
 
-    <!-- 메인 플레이 필드 & HUD -->
     <section class="game-playground">
       <div class="hud-panel left-hud">
-        <button id="btnBackToMenu" class="btn btn-secondary tooltip btn-block" data-tooltip="스테이지 선택 메뉴로 이동">
-          <span>🗺️ Menu</span>
-        </button>
 
         <div class="hud-card ap-card">
           <span class="hud-label">남은 행동력 (AP)</span>
@@ -424,6 +423,6 @@
   </div>
 
   <script src="levels.js?v=13"></script>
-  <script src="game.js?v=42"></script>
+  <script src="game.js?v=43"></script>
 </body>
 </html>
