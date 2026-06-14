@@ -12,8 +12,10 @@
 // 'C': 깨지는 바닥 내구도 1 (Crumbling 1)
 // 'X': 깨지는 바닥 내구도 2 (Crumbling 2)
 // 'G': 상자 목표 지점 (Sokoban Goal Zone - 상자를 밀어 넣어야 하는 곳)
+// 'P': 텔레포트 포탈 (Teleport Portal - 초록 세모)
 
 const DEFAULT_LEVELS = [
+  // ==================== 챕터 0: 기초 훈련 ====================
   {
     name: "1. 기초 상자 밀기",
     description: "상자(📦)를 밀어서 노란색 목표 지점(🌟) 위에 올려놓으세요. 모든 목표 지점에 상자를 놓으면 클리어됩니다.",
@@ -21,6 +23,7 @@ const DEFAULT_LEVELS = [
     height: 7,
     maxAP: 40,
     optimalAP: 21,
+    chapter: 0,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", "G", ".", ".", ".", ".", "G", "W"],
@@ -44,6 +47,7 @@ const DEFAULT_LEVELS = [
     height: 7,
     maxAP: 45,
     optimalAP: 35,
+    chapter: 0,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", ".", "G", ".", "T", ".", "G", ".", "W"],
@@ -67,6 +71,7 @@ const DEFAULT_LEVELS = [
     height: 7,
     maxAP: 50,
     optimalAP: 35,
+    chapter: 0,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", "G", "G", ".", ".", ".", "K", "W"],
@@ -93,6 +98,7 @@ const DEFAULT_LEVELS = [
     height: 7,
     maxAP: 45,
     optimalAP: 26,
+    chapter: 0,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", ".", ".", ".", ".", ".", "G", ".", "W"],
@@ -116,6 +122,7 @@ const DEFAULT_LEVELS = [
     height: 7,
     maxAP: 35,
     optimalAP: 20,
+    chapter: 0,
     grid: [
       ["W", "W", "W", "W", "W", "W", "W", "W", "W"],
       ["W", "I", "H", "G", ".", ".", ".", "I", "W"],
@@ -131,6 +138,233 @@ const DEFAULT_LEVELS = [
       { type: "box", x: 5, y: 2 }
     ],
     connections: []
+  },
+
+  // ==================== 챕터 1: 박스 창고 ====================
+  {
+    name: "1-1. 홀수 격자의 장벽",
+    description: "좌표의 합(x+y)이 홀수인 칸에 상자가 존재합니다. 맨 왼쪽 아래(1,1)에서 시작해 보세요!",
+    width: 13,
+    height: 13,
+    maxAP: 80,
+    optimalAP: 63,
+    chapter: 1,
+    locked: false,
+    grid: [
+      ["G", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "G"],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", "G", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "G"]
+    ],
+    entities: [
+      { type: "player", x: 0, y: 12 },
+      // Row 0 (r=0, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 0 }, { type: "box", x: 3, y: 0 }, { type: "box", x: 5, y: 0 }, { type: "box", x: 7, y: 0 }, { type: "box", x: 9, y: 0 }, { type: "box", x: 11, y: 0 },
+      // Row 1 (r=1, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 1 }, { type: "box", x: 2, y: 1 }, { type: "box", x: 4, y: 1 }, { type: "box", x: 6, y: 1 }, { type: "box", x: 8, y: 1 }, { type: "box", x: 10, y: 1 }, { type: "box", x: 12, y: 1 },
+      // Row 2 (r=2, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 2 }, { type: "box", x: 3, y: 2 }, { type: "box", x: 5, y: 2 }, { type: "box", x: 7, y: 2 }, { type: "box", x: 9, y: 2 }, { type: "box", x: 11, y: 2 },
+      // Row 3 (r=3, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 3 }, { type: "box", x: 2, y: 3 }, { type: "box", x: 4, y: 3 }, { type: "box", x: 6, y: 3 }, { type: "box", x: 8, y: 3 }, { type: "box", x: 10, y: 3 }, { type: "box", x: 12, y: 3 },
+      // Row 4 (r=4, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 4 }, { type: "box", x: 3, y: 4 }, { type: "box", x: 5, y: 4 }, { type: "box", x: 7, y: 4 }, { type: "box", x: 9, y: 4 }, { type: "box", x: 11, y: 4 },
+      // Row 5 (r=5, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 5 }, { type: "box", x: 2, y: 5 }, { type: "box", x: 4, y: 5 }, { type: "box", x: 6, y: 5 }, { type: "box", x: 8, y: 5 }, { type: "box", x: 10, y: 5 }, { type: "box", x: 12, y: 5 },
+      // Row 6 (r=6, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 6 }, { type: "box", x: 3, y: 6 }, { type: "box", x: 5, y: 6 }, { type: "box", x: 7, y: 6 }, { type: "box", x: 9, y: 6 }, { type: "box", x: 11, y: 6 },
+      // Row 7 (r=7, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 7 }, { type: "box", x: 2, y: 7 }, { type: "box", x: 4, y: 7 }, { type: "box", x: 6, y: 7 }, { type: "box", x: 8, y: 7 }, { type: "box", x: 10, y: 7 }, { type: "box", x: 12, y: 7 },
+      // Row 8 (r=8, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 8 }, { type: "box", x: 3, y: 8 }, { type: "box", x: 5, y: 8 }, { type: "box", x: 7, y: 8 }, { type: "box", x: 9, y: 8 }, { type: "box", x: 11, y: 8 },
+      // Row 9 (r=9, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 9 }, { type: "box", x: 2, y: 9 }, { type: "box", x: 4, y: 9 }, { type: "box", x: 6, y: 9 }, { type: "box", x: 8, y: 9 }, { type: "box", x: 10, y: 9 }, { type: "box", x: 12, y: 9 },
+      // Row 10 (r=10, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 10 }, { type: "box", x: 3, y: 10 }, { type: "box", x: 5, y: 10 }, { type: "box", x: 7, y: 10 }, { type: "box", x: 9, y: 10 }, { type: "box", x: 11, y: 10 },
+      // Row 11 (r=11, odd): cols 0, 2, 4, 6, 8, 10, 12
+      { type: "box", x: 0, y: 11 }, { type: "box", x: 2, y: 11 }, { type: "box", x: 4, y: 11 }, { type: "box", x: 6, y: 11 }, { type: "box", x: 8, y: 11 }, { type: "box", x: 10, y: 11 }, { type: "box", x: 12, y: 11 },
+      // Row 12 (r=12, even): cols 1, 3, 5, 7, 9, 11
+      { type: "box", x: 1, y: 12 }, { type: "box", x: 3, y: 12 }, { type: "box", x: 5, y: 12 }, { type: "box", x: 7, y: 12 }, { type: "box", x: 9, y: 12 }, { type: "box", x: 11, y: 12 }
+    ],
+    connections: []
+  },
+  {
+    name: "1-2. 순간이동 관문",
+    description: "초록색 세모(▲) 포탈을 밟으면 반대편 포탈로 즉시 이동합니다. 상자(📦)는 포탈 안으로 밀어 넣을 수 없습니다.",
+    width: 16,
+    height: 10,
+    maxAP: 62,
+    optimalAP: 47,
+    chapter: 1,
+    locked: false,
+    grid: [
+      ["P", ".", ".", ".", "G", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", "H", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", ".", "P", ".", ".", "G"]
+    ],
+    entities: [
+      { type: "player", x: 0, y: 9 },
+      // Row 10 (y=0)
+      { type: "box", x: 3, y: 0 },
+      { type: "box", x: 5, y: 0 },
+      { type: "box", x: 6, y: 0 },
+      { type: "box", x: 8, y: 0 },
+      { type: "box", x: 11, y: 0 },
+      { type: "box", x: 15, y: 0 },
+      // Row 9 (y=1)
+      { type: "box", x: 0, y: 1 },
+      { type: "box", x: 2, y: 1 },
+      { type: "box", x: 4, y: 1 },
+      { type: "box", x: 6, y: 1 },
+      { type: "box", x: 8, y: 1 },
+      { type: "box", x: 11, y: 1 },
+      { type: "box", x: 13, y: 1 },
+      // Row 8 (y=2)
+      { type: "box", x: 0, y: 2 },
+      { type: "box", x: 1, y: 2 },
+      { type: "box", x: 4, y: 2 },
+      { type: "box", x: 5, y: 2 },
+      { type: "box", x: 9, y: 2 },
+      { type: "box", x: 10, y: 2 },
+      { type: "box", x: 11, y: 2 },
+      { type: "box", x: 14, y: 2 },
+      // Row 7 (y=3)
+      { type: "box", x: 1, y: 3 },
+      { type: "box", x: 2, y: 3 },
+      { type: "box", x: 3, y: 3 },
+      { type: "box", x: 4, y: 3 },
+      { type: "box", x: 5, y: 3 },
+      { type: "box", x: 6, y: 3 },
+      { type: "box", x: 8, y: 3 },
+      { type: "box", x: 12, y: 3 },
+      { type: "box", x: 14, y: 3 },
+      { type: "box", x: 15, y: 3 },
+      // Row 6 (y=4)
+      { type: "box", x: 5, y: 4 },
+      { type: "box", x: 7, y: 4 },
+      { type: "box", x: 8, y: 4 },
+      { type: "box", x: 12, y: 4 },
+      { type: "box", x: 13, y: 4 },
+      // Row 5 (y=5)
+      { type: "box", x: 0, y: 5 },
+      { type: "box", x: 3, y: 5 },
+      { type: "box", x: 5, y: 5 },
+      { type: "box", x: 6, y: 5 },
+      { type: "box", x: 8, y: 5 },
+      { type: "box", x: 10, y: 5 },
+      { type: "box", x: 12, y: 5 },
+      { type: "box", x: 14, y: 5 },
+      { type: "box", x: 15, y: 5 },
+      // Row 4 (y=6)
+      { type: "box", x: 1, y: 6 },
+      { type: "box", x: 2, y: 6 },
+      { type: "box", x: 4, y: 6 },
+      { type: "box", x: 6, y: 6 },
+      { type: "box", x: 8, y: 6 },
+      { type: "box", x: 11, y: 6 },
+      { type: "box", x: 12, y: 6 },
+      // Row 3 (y=7)
+      { type: "box", x: 3, y: 7 },
+      { type: "box", x: 5, y: 7 },
+      { type: "box", x: 7, y: 7 },
+      { type: "box", x: 9, y: 7 },
+      { type: "box", x: 10, y: 7 },
+      { type: "box", x: 12, y: 7 },
+      { type: "box", x: 13, y: 7 },
+      // Row 2 (y=8)
+      { type: "box", x: 0, y: 8 },
+      { type: "box", x: 1, y: 8 },
+      { type: "box", x: 3, y: 8 },
+      { type: "box", x: 5, y: 8 },
+      { type: "box", x: 7, y: 8 },
+      { type: "box", x: 10, y: 8 },
+      { type: "box", x: 12, y: 8 },
+      { type: "box", x: 14, y: 8 },
+      { type: "box", x: 15, y: 8 },
+      // Row 1 (y=9)
+      { type: "box", x: 2, y: 9 },
+      { type: "box", x: 6, y: 9 },
+      { type: "box", x: 8, y: 9 },
+      { type: "box", x: 10, y: 9 },
+      { type: "box", x: 11, y: 9 },
+      { type: "box", x: 13, y: 9 }
+    ],
+    connections: []
+  },
+  {
+    name: "1-3. 압력 감지실",
+    description: "잠긴문을 열어 목적지에 도달하세요",
+    width: 10,
+    height: 10,
+    maxAP: 95,
+    optimalAP: 73,
+    chapter: 1,
+    locked: false,
+    grid: [
+      [".", ".", ".", "W", ".", ".", "H", "K", "W", "G"],
+      [".", "H", "H", "H", "H", "H", "H", "H", "H", "."],
+      [".", "H", ".", ".", ".", ".", "I", "W", "H", "D"],
+      ["S", "H", ".", ".", ".", ".", ".", ".", "H", "D"],
+      ["W", "H", "I", "I", "I", ".", ".", ".", "H", "D"],
+      ["S", "H", ".", "I", ".", ".", ".", ".", "H", "."],
+      [".", "H", ".", "I", ".", ".", "I", "I", "H", "W"],
+      ["H", "H", ".", "I", ".", ".", ".", ".", "H", "."],
+      [".", "H", "H", "H", "H", "H", "H", "H", "H", "."],
+      [".", ".", ".", "W", "S", ".", "D", ".", ".", "."]
+    ],
+    entities: [
+      { x: 2, y: 5, type: "box" },
+      { x: 2, y: 7, type: "box" },
+      { x: 4, y: 7, type: "box" },
+      { x: 7, y: 7, type: "box" },
+      { x: 7, y: 5, type: "box" },
+      { x: 2, y: 2, type: "box" },
+      { x: 4, y: 2, type: "box" },
+      { x: 0, y: 2, type: "box" },
+      { x: 0, y: 8, type: "box" },
+      { x: 0, y: 6, type: "box" },
+      { x: 5, y: 0, type: "box" },
+      { x: 5, y: 9, type: "box" },
+      { x: 9, y: 1, type: "box" },
+      { x: 5, y: 4, type: "player" },
+      { x: 6, y: 3, type: "box" },
+      { x: 5, y: 5, type: "box" }
+    ],
+    connections: [
+      { door: { x: 6, y: 9 }, switch: { x: 7, y: 0 } },
+      { door: { x: 9, y: 2 }, switch: { x: 0, y: 3 } },
+      { door: { x: 9, y: 3 }, switch: { x: 0, y: 5 } },
+      { door: { x: 9, y: 4 }, switch: { x: 4, y: 9 } }
+    ]
+  },
+  {
+    name: "1-4. 좁혀오는 길",
+    chapter: 1,
+    locked: true,
+    grid: [["."]],
+    entities: []
+  },
+  {
+    name: "1-5. 심연의 심장",
+    chapter: 1,
+    locked: true,
+    grid: [["."]],
+    entities: []
   }
 ];
 

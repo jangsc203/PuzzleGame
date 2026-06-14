@@ -124,6 +124,11 @@ class SoundSynth {
     this.playTone(800, 'sine', 0.05, 0.1, 1000);
   }
 
+  playTeleport() {
+    this.playTone(300, 'sine', 0.2, 0.2, 1200);
+    setTimeout(() => this.playTone(600, 'sine', 0.15, 0.15, 1500), 50);
+  }
+
   playDoor() {
     this.playTone(100, 'sawtooth', 0.4, 0.1, 50);
   }
@@ -249,6 +254,7 @@ let gameStatus = 'playing'; // 'playing', 'victory', 'gameover'
 // 2D Array grids
 let boardGrid = []; // Tile structure ('W', '.', 'I', 'H', 'F', 'S', 'K', 'D', 'T', '^', '>', 'v', '<', 'C', 'X', 'G')
 let connections = []; // [{switch: {x,y}, door: {x,y}}]
+let levelPortalConnections = []; // [{p1: {x,y}, p2: {x,y}}]
 let activeStickySwitches = new Set(); // Coordinates "x,y" of sticky switches pressed
 
 // Entities
@@ -272,6 +278,7 @@ window.replayPath = [];
 window.replayIndex = 0;
 window.replayTimeoutId = null;
 window.replayOriginalLevelIdx = 0;
+let currentChapterIdx = 0;
 
 // Tile Palette mapping for drawing
 const TILE_SIZE_MAX = 128;
@@ -283,26 +290,42 @@ let offsetY = 0;
 let isEditorMode = false;
 let spikesUp = false; // Spikes stateful state (toggles on player moves)
 
+// Map Editor States
+let editorGridWidth = 15;
+let editorGridHeight = 15;
+let editorSelectedTool = 'W'; // Default tool: Wall
+let editorMapName = '';
+let editorMaxAP = 50;
+let editorGrid = [];
+let editorEntities = [];
+let editorConnections = [];
+let editorPortalConnections = [];
+let editorLinkStart = null;
+let editorVerified = false;
+let editorOptimalAP = null;
+let editorOptimalMoves = null;
+let editorOptimalPath = null;
+let isEditorTesting = false;
+let currentEditingMapId = null;
+
+// Custom Play states
+window.customMapMode = null; // 'editor' during test play, 'play' during friend map play
+let currentCustomLevelData = null;
+let currentPlayingCustomMap = null;
+
 // --------------------------------------------------------------------------
 // Initialization & Level Loading
 // --------------------------------------------------------------------------
 
 function initGame() {
-  // Populate levels selector
+  // Set up levels selector listener
   const select = document.getElementById('levelSelect');
-  select.innerHTML = '';
-  DEFAULT_LEVELS.forEach((lvl, idx) => {
-    const opt = document.createElement('option');
-    opt.value = idx;
-    opt.textContent = lvl.name;
-    select.appendChild(opt);
-  });
-
   select.addEventListener('change', (e) => {
     sound.init();
     loadLevel(parseInt(e.target.value));
     canvas.focus();
   });
+  populateLevelSelect();
 
   // Controls UI binding with Volume Slider Dropdown
   const volumeSliders = document.querySelectorAll('.volume-slider');
@@ -313,8 +336,10 @@ function initGame() {
     const iconHtml = `<span class="icon">${isMuted ? '🔇' : '🔊'}</span>`;
     const headerBtn = document.getElementById('btnSoundToggle');
     const footerBtn = document.getElementById('btnChapterSelectSound');
+    const stageBtn = document.getElementById('btnStageSelectSound');
     if (headerBtn) headerBtn.innerHTML = iconHtml;
     if (footerBtn) footerBtn.innerHTML = iconHtml;
+    if (stageBtn) stageBtn.innerHTML = iconHtml;
     
     const volPercent = Math.round(sound.volume * 100);
     volumeSliders.forEach(slider => {
@@ -329,24 +354,38 @@ function initGame() {
   updateSoundUI();
 
   // Toggle dropdown logic
-  function toggleDropdown(dropdownId, oppositeDropdownId) {
+  const DROPDOWNS = ['volumeDropdownHeader', 'volumeDropdownFooter', 'volumeDropdownStageSelect'];
+  function toggleDropdown(targetId) {
     sound.init();
-    const dropdown = document.getElementById(dropdownId);
-    const oppositeDropdown = document.getElementById(oppositeDropdownId);
-    if (dropdown) dropdown.classList.toggle('hidden');
-    if (oppositeDropdown) oppositeDropdown.classList.add('hidden');
+    DROPDOWNS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (id === targetId) {
+        el.classList.toggle('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    });
   }
 
   document.getElementById('btnSoundToggle').addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleDropdown('volumeDropdownHeader', 'volumeDropdownFooter');
+    toggleDropdown('volumeDropdownHeader');
   });
 
   const footerSoundBtn = document.getElementById('btnChapterSelectSound');
   if (footerSoundBtn) {
     footerSoundBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleDropdown('volumeDropdownFooter', 'volumeDropdownHeader');
+      toggleDropdown('volumeDropdownFooter');
+    });
+  }
+
+  const stageSelectSoundBtn = document.getElementById('btnStageSelectSound');
+  if (stageSelectSoundBtn) {
+    stageSelectSoundBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDropdown('volumeDropdownStageSelect');
     });
   }
 
@@ -376,10 +415,10 @@ function initGame() {
   // Close sound dropdowns when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.sound-wrapper')) {
-      const headerDropdown = document.getElementById('volumeDropdownHeader');
-      const footerDropdown = document.getElementById('volumeDropdownFooter');
-      if (headerDropdown) headerDropdown.classList.add('hidden');
-      if (footerDropdown) footerDropdown.classList.add('hidden');
+      DROPDOWNS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
     }
   });
 
@@ -391,6 +430,14 @@ function initGame() {
   const footerHelpBtn = document.getElementById('btnChapterSelectHelp');
   if (footerHelpBtn) {
     footerHelpBtn.addEventListener('click', () => {
+      if (window.isReplaying) return;
+      document.getElementById('helpModal').classList.remove('hidden');
+    });
+  }
+
+  const stageSelectHelpBtn = document.getElementById('btnStageSelectHelp');
+  if (stageSelectHelpBtn) {
+    stageSelectHelpBtn.addEventListener('click', () => {
       if (window.isReplaying) return;
       document.getElementById('helpModal').classList.remove('hidden');
     });
@@ -413,13 +460,32 @@ function initGame() {
   document.getElementById('btnOverlayNext').addEventListener('click', () => {
     if (window.isReplaying) return;
     if (gameStatus === 'victory') {
-      const nextIdx = currentLevelIdx + 1;
-      if (nextIdx < DEFAULT_LEVELS.length) {
-        document.getElementById('levelSelect').value = nextIdx;
-        loadLevel(nextIdx);
+      if (window.customMapMode === 'editor') {
+        exitTestPlayAndReturnToEditor();
+      } else if (window.customMapMode === 'play') {
+        exitCustomPlayAndReturnToList();
       } else {
-        alert("모든 기본 레벨을 완주하셨습니다! 축하합니다!");
-        document.getElementById('screenOverlay').classList.add('hidden');
+        const nextIdx = currentLevelIdx + 1;
+        const nextLvl = nextIdx < DEFAULT_LEVELS.length ? DEFAULT_LEVELS[nextIdx] : null;
+        const nextChapter = nextLvl && (nextLvl.chapter !== undefined ? nextLvl.chapter : 0);
+        
+        if (nextLvl && nextChapter === currentChapterIdx) {
+          if (nextLvl.locked) {
+            document.getElementById('screenOverlay').classList.add('hidden');
+            showStageSelectMenu();
+          } else {
+            document.getElementById('levelSelect').value = nextIdx;
+            loadLevel(nextIdx);
+          }
+        } else {
+          if (currentChapterIdx === 0) {
+            alert("기초 훈련을 완주하셨습니다! 제 1장 모험에 도전해보세요!");
+          } else {
+            alert("모든 기본 레벨을 완주하셨습니다! 축하합니다!");
+          }
+          document.getElementById('screenOverlay').classList.add('hidden');
+          showChapterSelectMenu();
+        }
       }
     } else {
       restartLevel();
@@ -485,32 +551,94 @@ function initGame() {
   document.getElementById('btnLeaderboardClose').addEventListener('click', () => {
     document.getElementById('leaderboardModal').classList.add('hidden');
   });
+  document.getElementById('btnCustomLeaderboardClose').addEventListener('click', () => {
+    document.getElementById('customLeaderboardModal').classList.add('hidden');
+  });
   document.getElementById('btnLeaderboardConfirm').addEventListener('click', () => {
     document.getElementById('leaderboardModal').classList.add('hidden');
   });
   document.getElementById('btnLeaderboardRefresh').addEventListener('click', () => {
-    showLeaderboardModal();
+    showLeaderboardModal(window.currentLeaderboardChapterIdx !== undefined ? window.currentLeaderboardChapterIdx : null);
   });
 
-  // Bind Logout Listener
-  document.getElementById('btnLogout').addEventListener('click', () => {
-    logout();
-  });
+  // Bind Mode Select Logout Listener
+  const btnModeSelectLogout = document.getElementById('btnModeSelectLogout');
+  if (btnModeSelectLogout) {
+    btnModeSelectLogout.addEventListener('click', () => {
+      logout();
+    });
+  }
+
+  // Bind Admin Paths UI Listeners
+  const openAdminPathsModal = () => {
+    showAdminPathsModal();
+  };
+  const closeAdminPathsModal = () => {
+    const modal = document.getElementById('adminPathsModal');
+    if (modal) modal.classList.add('hidden');
+    window.adminPathsSelectedUser = null;
+    window.adminPathsSelectedChapter = null;
+  };
+
+  const btnAdminPaths = document.getElementById('btnAdminPaths');
+  if (btnAdminPaths) btnAdminPaths.addEventListener('click', openAdminPathsModal);
+  
+  const btnChapterSelectAdminPaths = document.getElementById('btnChapterSelectAdminPaths');
+  if (btnChapterSelectAdminPaths) btnChapterSelectAdminPaths.addEventListener('click', openAdminPathsModal);
+  
+  const btnStageSelectAdminPaths = document.getElementById('btnStageSelectAdminPaths');
+  if (btnStageSelectAdminPaths) btnStageSelectAdminPaths.addEventListener('click', openAdminPathsModal);
+
+  const btnAdminPathsClose = document.getElementById('btnAdminPathsClose');
+  if (btnAdminPathsClose) btnAdminPathsClose.addEventListener('click', closeAdminPathsModal);
+
+  const btnAdminPathsConfirm = document.getElementById('btnAdminPathsConfirm');
+  if (btnAdminPathsConfirm) btnAdminPathsConfirm.addEventListener('click', closeAdminPathsModal);
+
+  const btnAdminPathsRefresh = document.getElementById('btnAdminPathsRefresh');
+  if (btnAdminPathsRefresh) btnAdminPathsRefresh.addEventListener('click', openAdminPathsModal);
+
 
   // Bind Stage Select Navigation & Utility buttons
   document.getElementById('btnBackToMenu').addEventListener('click', () => {
     if (window.isReplaying) return;
-    showStageSelectMenu();
+    if (window.customMapMode === 'editor') {
+      exitTestPlayAndReturnToEditor();
+    } else if (window.customMapMode === 'play') {
+      exitCustomPlayAndReturnToList();
+    } else {
+      showStageSelectMenu();
+    }
   });
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn) {
+    playBackBtn.addEventListener('click', () => {
+      if (window.isReplaying) return;
+      if (window.customMapMode === 'editor') {
+        exitTestPlayAndReturnToEditor();
+      } else if (window.customMapMode === 'play') {
+        exitCustomPlayAndReturnToList();
+      } else {
+        showStageSelectMenu();
+      }
+    });
+  }
 
   document.getElementById('btnOverlayMenu').addEventListener('click', () => {
     if (window.isReplaying) return;
     document.getElementById('screenOverlay').classList.add('hidden');
-    showStageSelectMenu();
+    if (window.customMapMode === 'editor') {
+      exitTestPlayAndReturnToEditor();
+    } else if (window.customMapMode === 'play') {
+      exitCustomPlayAndReturnToList();
+    } else {
+      showStageSelectMenu();
+    }
   });
 
   document.getElementById('btnStageSelectLeaderboard').addEventListener('click', () => {
-    showLeaderboardModal();
+    showLeaderboardModal(currentChapterIdx);
   });
 
   document.getElementById('btnStageSelectLogout').addEventListener('click', () => {
@@ -525,15 +653,23 @@ function initGame() {
   // Bind Chapter Selection Event Listeners
   document.getElementById('chapterCard1').addEventListener('click', () => {
     sound.init();
+    currentChapterIdx = 0;
+    populateLevelSelect();
     document.getElementById('chapterSelectOverlay').classList.add('hidden');
     showStageSelectMenu();
   });
 
-  ['chapterCard2', 'chapterCard3'].forEach(id => {
-    document.getElementById(id).addEventListener('click', () => {
-      sound.playFail();
-      shakeCard(id);
-    });
+  document.getElementById('chapterCard2').addEventListener('click', () => {
+    sound.init();
+    currentChapterIdx = 1;
+    populateLevelSelect();
+    document.getElementById('chapterSelectOverlay').classList.add('hidden');
+    showStageSelectMenu();
+  });
+
+  document.getElementById('chapterCard3').addEventListener('click', () => {
+    sound.playFail();
+    shakeCard('chapterCard3');
   });
 
   document.getElementById('btnChapterSelectLeaderboard').addEventListener('click', () => {
@@ -549,6 +685,105 @@ function initGame() {
 
   // Start Animation Loop
   requestAnimationFrame(gameLoop);
+
+  // Bind Mode Selection Screen listeners
+  document.getElementById('btnModeStage').addEventListener('click', () => {
+    showChapterSelectMenu();
+  });
+
+  document.getElementById('btnModeCustom').addEventListener('click', () => {
+    showCustomMapMenu();
+  });
+
+  document.getElementById('btnModeAdminPaths').addEventListener('click', () => {
+    showAdminUserSelectMenu();
+  });
+
+  document.getElementById('btnAdminUserSelectBack').addEventListener('click', () => {
+    document.getElementById('adminUserSelectOverlay').classList.add('hidden');
+    showModeSelectMenu();
+  });
+
+  document.getElementById('btnAdminUserStageBack').addEventListener('click', () => {
+    document.getElementById('adminUserStageOverlay').classList.add('hidden');
+    document.getElementById('adminUserSelectOverlay').classList.remove('hidden');
+  });
+
+  // Bind Custom Map Menu screen listeners
+  document.getElementById('btnCustomMapEdit').addEventListener('click', () => {
+    showCustomMapList();
+  });
+
+  document.getElementById('btnCustomMapPlay').addEventListener('click', () => {
+    openFriendMapsList();
+  });
+
+  document.getElementById('btnCustomMapBackToMode').addEventListener('click', () => {
+    showModeSelectMenu();
+  });
+
+  // Bind Custom Map List screen listeners
+  document.getElementById('btnCustomMapListBack').addEventListener('click', () => {
+    showCustomMapMenu();
+  });
+
+  document.getElementById('btnCreateNewCustomMap').addEventListener('click', () => {
+    createNewCustomMap();
+  });
+
+  // Bind Map Editor screen listeners
+  document.getElementById('btnEditorClose').addEventListener('click', () => {
+    if (confirm("저장하지 않은 변경사항은 사라질 수 있습니다. 나가시겠습니까?")) {
+      isEditorMode = false;
+      showCustomMapList();
+    }
+  });
+
+  document.getElementById('btnEditorSaveDraft').addEventListener('click', () => {
+    saveEditorDraft();
+  });
+
+  document.getElementById('btnEditorPublish').addEventListener('click', () => {
+    publishEditorMap();
+  });
+
+  document.getElementById('btnEditorTestPlay').addEventListener('click', () => {
+    startEditorTestPlay();
+  });
+
+  // Palette tool selection
+  const paletteItems = document.querySelectorAll('#editorPalette .palette-item');
+  paletteItems.forEach(item => {
+    item.addEventListener('click', () => {
+      paletteItems.forEach(btn => btn.classList.remove('active'));
+      item.classList.add('active');
+      editorSelectedTool = item.getAttribute('data-type');
+      
+      const statusEl = document.getElementById('editorLinkStatus');
+      if (editorSelectedTool === 'link') {
+        editorLinkStart = null;
+        statusEl.textContent = "연결할 스위치(🔴/🟡), 잠긴 문(🔒) 또는 포탈(P)을 클릭하세요.";
+      } else {
+        editorLinkStart = null;
+        statusEl.textContent = "도구 선택됨";
+      }
+    });
+  });
+
+  // Bind Friend Maps Overlay screen listeners
+  document.getElementById('btnFriendMapsBack').addEventListener('click', () => {
+    document.getElementById('friendMapsOverlay').classList.add('hidden');
+    showCustomMapMenu();
+  });
+
+  document.getElementById('btnFriendMapsRefresh').addEventListener('click', () => {
+    renderFriendMapsList();
+  });
+
+  // Bind Back to Mode in Chapter Selection overlay
+  document.getElementById('btnChapterSelectBackToMode').addEventListener('click', () => {
+    showModeSelectMenu();
+  });
 
   // Check initial login state
   checkLoginState();
@@ -574,7 +809,71 @@ function initGame() {
   });
 }
 
-function loadLevel(index, customLevelData = null) {
+function getLevelDisplayNumber(idx) {
+  const lvl = DEFAULT_LEVELS[idx];
+  if (!lvl) return "";
+  const ch = lvl.chapter !== undefined ? lvl.chapter : 0;
+  if (ch === 0) {
+    return `${idx + 1}층`;
+  } else {
+    const chIdx = idx - 5 + 1; // For Chapter 1, levels 5 to 9 are 1-1 to 1-5
+    return `1-${chIdx}`;
+  }
+}
+
+function populateLevelSelect() {
+  const select = document.getElementById('levelSelect');
+  if (!select) return;
+  select.innerHTML = '';
+  DEFAULT_LEVELS.forEach((lvl, idx) => {
+    const levelChapter = lvl.chapter !== undefined ? lvl.chapter : 0;
+    if (levelChapter !== currentChapterIdx) return;
+    if (lvl.locked) return; // Don't show locked levels in dropdown
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = lvl.name;
+    select.appendChild(opt);
+  });
+}
+
+function saveCurrentPlayTimeOnExit() {
+  const user = localStorage.getItem('runic_dungeon_user') || '';
+  if (user && gameStatus === 'playing' && !window.isReplaying) {
+    const best = getBestRecord(currentLevelIdx);
+    const alreadyThreeStars = best && best.stars === 3;
+    if (!alreadyThreeStars && window.stagePlayTime > 0) {
+      localStorage.setItem(`runic_dungeon_play_time_${user}_${currentLevelIdx}`, Math.round(window.stagePlayTime));
+    }
+  }
+}
+
+window.addEventListener('beforeunload', saveCurrentPlayTimeOnExit);
+window.addEventListener('pagehide', saveCurrentPlayTimeOnExit);
+
+function loadLevel(index, customLevelData = null, isRestart = false) {
+  saveCurrentPlayTimeOnExit();
+  if (!customLevelData) {
+    const user = localStorage.getItem('runic_dungeon_user');
+    if (user) {
+      const best = getBestRecord(index);
+      const alreadyThreeStars = best && best.stars === 3;
+      if (alreadyThreeStars) {
+        // Show the retry count from the 3-star record
+        localStorage.setItem(`runic_dungeon_retry_count_${user}_${index}`, best.retries || 1);
+      } else {
+        // Not 3-starred yet: accumulate retry count
+        let retries = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${user}_${index}`), 10) || 0;
+        if (retries === 0) {
+          retries = 1;
+          localStorage.setItem(`runic_dungeon_retry_count_${user}_${index}`, retries);
+        } else if (isRestart) {
+          retries += 1;
+          localStorage.setItem(`runic_dungeon_retry_count_${user}_${index}`, retries);
+        }
+      }
+    }
+  }
+
   historyStack = [];
   redoStack = [];
   clearPath = [];
@@ -586,6 +885,30 @@ function loadLevel(index, customLevelData = null) {
   document.getElementById('screenOverlay').classList.add('hidden');
   document.getElementById('btnOverlayRestart').classList.add('hidden');
 
+  // Initialize stage play timer variables
+  const user = localStorage.getItem('runic_dungeon_user') || '';
+  if (!customLevelData) {
+    currentCustomLevelData = null;
+    if (user) {
+      const best = getBestRecord(index);
+      const alreadyThreeStars = best && best.stars === 3;
+      if (alreadyThreeStars) {
+        // Show the clear time from the 3-star record
+        window.stagePlayTime = (best.clearTime || 0) * 1000;
+        localStorage.setItem(`runic_dungeon_play_time_${user}_${index}`, (best.clearTime || 0) * 1000);
+      } else {
+        // Not 3-starred yet: load accumulated play time from local storage
+        window.stagePlayTime = parseInt(localStorage.getItem(`runic_dungeon_play_time_${user}_${index}`), 10) || 0;
+      }
+    } else {
+      window.stagePlayTime = 0;
+    }
+  } else {
+    currentCustomLevelData = customLevelData;
+    window.stagePlayTime = 0;
+  }
+  window.lastTimerTick = Date.now();
+
   let lvl = customLevelData;
   if (!lvl) {
     currentLevelIdx = index;
@@ -595,39 +918,98 @@ function loadLevel(index, customLevelData = null) {
 
   levelName = lvl.name;
   levelDesc = lvl.description || "";
-  levelWidth = lvl.width;
-  levelHeight = lvl.height;
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn && window.customMapMode !== 'play' && window.customMapMode !== 'editor') {
+    playBackBtn.innerHTML = '<span class="icon">↩️</span> <span class="text">메뉴로 돌아가기</span>';
+    playBackBtn.setAttribute('data-tooltip', '이전 메뉴로 돌아가기');
+  }
+  // Dynamic Bounding Box cropping to maximize screen space for active area
+  let minX = lvl.width;
+  let maxX = 0;
+  let minY = lvl.height;
+  let maxY = 0;
+  let hasActiveElements = false;
+
+  for (let y = 0; y < lvl.height; y++) {
+    for (let x = 0; x < lvl.width; x++) {
+      if (lvl.grid[y][x] !== ' ') {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+        hasActiveElements = true;
+      }
+    }
+  }
+
+  if (lvl.entities) {
+    lvl.entities.forEach(ent => {
+      minX = Math.min(minX, ent.x);
+      maxX = Math.max(maxX, ent.x);
+      minY = Math.min(minY, ent.y);
+      maxY = Math.max(maxY, ent.y);
+      hasActiveElements = true;
+    });
+  }
+
+  let offsetX_crop = 0;
+  let offsetY_crop = 0;
+
+  if (hasActiveElements) {
+    offsetX_crop = minX;
+    offsetY_crop = minY;
+    levelWidth = maxX - minX + 1;
+    levelHeight = maxY - minY + 1;
+  } else {
+    levelWidth = lvl.width;
+    levelHeight = lvl.height;
+  }
+
   maxAP = lvl.maxAP;
   remainingAP = lvl.maxAP;
   moveCount = 0;
   spikesUp = false; // Reset spikes to retracted at start of level
 
-  // Clone 2D grid
-  boardGrid = lvl.grid.map(row => [...row]);
+  // Clone 2D grid using the cropped bounds
+  boardGrid = Array(levelHeight).fill(null).map(() => Array(levelWidth).fill(' '));
+  for (let y = 0; y < levelHeight; y++) {
+    for (let x = 0; x < levelWidth; x++) {
+      boardGrid[y][x] = lvl.grid[y + offsetY_crop][x + offsetX_crop];
+    }
+  }
 
-  // Clone connections
+  // Clone and offset switch-door connections
   connections = lvl.connections ? lvl.connections.map(c => ({
-    switch: { x: c.switch.x, y: c.switch.y },
-    door: { x: c.door.x, y: c.door.y }
+    switch: { x: c.switch.x - offsetX_crop, y: c.switch.y - offsetY_crop },
+    door: { x: c.door.x - offsetX_crop, y: c.door.y - offsetY_crop }
   })) : [];
 
-  // Parse entities
+  // Clone and offset portal connections
+  levelPortalConnections = lvl.portalConnections ? lvl.portalConnections.map(c => ({
+    p1: { x: c.p1.x - offsetX_crop, y: c.p1.y - offsetY_crop },
+    p2: { x: c.p2.x - offsetX_crop, y: c.p2.y - offsetY_crop }
+  })) : [];
+
+  // Parse and offset entities
   boxes = [];
   let boxId = 0;
   lvl.entities.forEach(ent => {
+    const rx = ent.x - offsetX_crop;
+    const ry = ent.y - offsetY_crop;
     if (ent.type === 'player') {
-      player.x = ent.x;
-      player.y = ent.y;
-      player.animX = ent.x;
-      player.animY = ent.y;
+      player.x = rx;
+      player.y = ry;
+      player.animX = rx;
+      player.animY = ry;
       player.dir = 'down';
     } else if (ent.type === 'box') {
       boxes.push({
         id: boxId++,
-        x: ent.x,
-        y: ent.y,
-        animX: ent.x,
-        animY: ent.y,
+        x: rx,
+        y: ry,
+        animX: rx,
+        animY: ry,
         active: true
       });
     }
@@ -679,6 +1061,27 @@ function updateHUD() {
   document.getElementById('apText').textContent = `${remainingAP} / ${maxAP}`;
   document.getElementById('moveCount').textContent = moveCount;
 
+  // Update Retry Count Display in HUD
+  const user = localStorage.getItem('runic_dungeon_user') || '';
+  const retryEl = document.getElementById('retryCountDisplay');
+  if (retryEl) {
+    if (user && !currentCustomLevelData) {
+      const retryCount = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${user}_${currentLevelIdx}`), 10) || 0;
+      retryEl.textContent = retryCount > 0 ? `${retryCount}회` : '1회';
+    } else {
+      retryEl.textContent = '-';
+    }
+  }
+
+  // Update Timer Display in HUD
+  const timerEl = document.getElementById('timerDisplay');
+  if (timerEl) {
+    const totalSec = Math.floor((window.stagePlayTime || 0) / 1000);
+    const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    timerEl.textContent = `${m}:${s}`;
+  }
+
   const fill = document.getElementById('apProgressFill');
   const pct = Math.max(0, Math.min(100, (remainingAP / maxAP) * 100));
   fill.style.width = `${pct}%`;
@@ -690,7 +1093,7 @@ function updateHUD() {
   }
 
   // Update Star Rating HUD
-  const lvl = DEFAULT_LEVELS[currentLevelIdx];
+  const lvl = currentCustomLevelData || DEFAULT_LEVELS[currentLevelIdx];
   if (lvl) {
     const spentAP = maxAP - remainingAP;
     const optimalAP = lvl.optimalAP || 0;
@@ -710,12 +1113,17 @@ function updateHUD() {
     let stars = 1;
     let statusText = "별 1개 확정";
 
-    if (spentAP <= threeStarLimit) {
+    if (optimalAP > 0) {
+      if (spentAP <= threeStarLimit) {
+        stars = 3;
+        statusText = `별 3개까지 남은 행동력: ${threeStarLimit - spentAP} AP`;
+      } else if (spentAP <= twoStarLimit) {
+        stars = 2;
+        statusText = `별 2개까지 남은 행동력: ${twoStarLimit - spentAP} AP`;
+      }
+    } else {
       stars = 3;
-      statusText = `별 3개까지 남은 행동력: ${threeStarLimit - spentAP} AP`;
-    } else if (spentAP <= twoStarLimit) {
-      stars = 2;
-      statusText = `별 2개까지 남은 행동력: ${twoStarLimit - spentAP} AP`;
+      statusText = "검증 플레이 중";
     }
 
     const s1 = document.getElementById('star1');
@@ -833,11 +1241,34 @@ function simulateMove(dx, dy) {
     return simBoxes.find(b => b.active && b.x === x && b.y === y);
   }
 
+  function findOtherPortal(px, py) {
+    if (levelPortalConnections && levelPortalConnections.length > 0) {
+      const conn = levelPortalConnections.find(c => 
+        (c.p1.x === px && c.p1.y === py) || (c.p2.x === px && c.p2.y === py)
+      );
+      if (conn) {
+        if (conn.p1.x === px && conn.p1.y === py) {
+          return { x: conn.p2.x, y: conn.p2.y };
+        } else {
+          return { x: conn.p1.x, y: conn.p1.y };
+        }
+      }
+    }
+    for (let r = 0; r < levelHeight; r++) {
+      for (let c = 0; c < levelWidth; c++) {
+        if (simGrid[r][c] === 'P' && (c !== px || r !== py)) {
+          return { x: c, y: r };
+        }
+      }
+    }
+    return null;
+  }
+
   // Helper check for walls / closed doors
   function isBlocked(x, y) {
     if (x < 0 || x >= levelWidth || y < 0 || y >= levelHeight) return true;
     const tile = simGrid[y][x];
-    if (tile === 'W') return true;
+    if (tile === 'W' || tile === ' ') return true;
     if (tile === 'D') {
       return !isDoorOpenInSim(x, y, simBoxes);
     }
@@ -890,8 +1321,8 @@ function simulateMove(dx, dy) {
       if (!canEnterOneWay(nextPY, nextPX, dx, dy)) return null;
     }
 
-    // Check bounds & blocks behind box
-    if (isBlocked(boxTargetX, boxTargetY) || getBoxAt(boxTargetX, boxTargetY)) {
+    // Check bounds, blocks, & teleport portal (P) behind box (boxes cannot enter portal)
+    if (isBlocked(boxTargetX, boxTargetY) || getBoxAt(boxTargetX, boxTargetY) || simGrid[boxTargetY][boxTargetX] === 'P') {
       return null;
     }
 
@@ -943,8 +1374,8 @@ function simulateMove(dx, dy) {
           let nextBX = bx + dx;
           let nextBY = by + dy;
 
-          // Slide obstacle check
-          if (isBlocked(nextBX, nextBY) || getBoxAt(nextBX, nextBY)) break;
+          // Slide obstacle & portal check (box cannot enter portal)
+          if (isBlocked(nextBX, nextBY) || getBoxAt(nextBX, nextBY) || simGrid[nextBY][nextBX] === 'P') break;
 
           // One-way check
           if (['^', '>', 'v', '<'].includes(simGrid[nextBY][nextBX])) {
@@ -1021,6 +1452,18 @@ function simulateMove(dx, dy) {
           playerSteps.push({ x: px, y: py, action: 'slide' });
         }
 
+        // Check teleport portal during sliding
+        if (simGrid[py][px] === 'P') {
+          const portalDest = findOtherPortal(px, py);
+          if (portalDest) {
+            playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+            soundsToPlay.push({ delay: 200, type: 'teleport' });
+            px = portalDest.x;
+            py = portalDest.y;
+            break; // slide breaks immediately upon warping
+          }
+        }
+
         if (simGrid[py][px] !== 'I') break;
       }
     }
@@ -1043,6 +1486,16 @@ function simulateMove(dx, dy) {
       playerSteps.push({ x: px, y: py, action: 'fall' });
       curAP = 0;
       soundsToPlay.push({ delay: 100, type: 'fail' });
+    } else if (simGrid[py][px] === 'P') {
+      // Walked onto portal
+      playerSteps.push({ x: px, y: py, action: 'walk' });
+      const portalDest = findOtherPortal(px, py);
+      if (portalDest) {
+        playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+        soundsToPlay.push({ delay: 50, type: 'teleport' });
+        px = portalDest.x;
+        py = portalDest.y;
+      }
     } else if (simGrid[py][px] === 'I') {
       if (simGrid[py][px] === 'T' && simSpikesUp) {
         curAP -= 10;
@@ -1085,6 +1538,18 @@ function simulateMove(dx, dy) {
           break; // Stop sliding since player dies
         } else {
           playerSteps.push({ x: px, y: py, action: 'slide' });
+        }
+
+        // Check teleport portal during sliding
+        if (simGrid[py][px] === 'P') {
+          const portalDest = findOtherPortal(px, py);
+          if (portalDest) {
+            playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+            soundsToPlay.push({ delay: 100, type: 'teleport' });
+            px = portalDest.x;
+            py = portalDest.y;
+            break; // slide breaks immediately upon warping
+          }
         }
 
         if (simGrid[py][px] !== 'I') break;
@@ -1134,7 +1599,7 @@ function triggerCrumbleTile(x, y, crumblingUpdates, simGrid) {
 function isDoorOpenInSim(doorX, doorY, simBoxes) {
   // Find switches connected to this door
   const conns = connections.filter(c => c.door.x === doorX && c.door.y === doorY);
-  if (conns.length === 0) return true; // Unlinked door is open by default
+  if (conns.length === 0) return false; // Unlinked door is closed by default
 
   return conns.some(conn => {
     const sx = conn.switch.x;
@@ -1187,7 +1652,7 @@ function isDoorOpen(doorX, doorY) {
 
   // An open door could be open due to any connected switches being active
   const conns = connections.filter(c => c.door.x === doorX && c.door.y === doorY);
-  if (conns.length === 0) return true;
+  if (conns.length === 0) return false;
 
   return conns.some(conn => {
     const sx = conn.switch.x;
@@ -1222,7 +1687,8 @@ function setupAnimations(sim) {
     const from = sim.playerSteps[i - 1];
     const to = sim.playerSteps[i];
     const isSlide = to.action === 'slide' || to.action === 'spike';
-    const dur = isSlide ? CELL_SLIDE_DUR : CELL_WALK_DUR;
+    const isTeleport = to.action === 'teleport';
+    const dur = isTeleport ? 14 : (isSlide ? CELL_SLIDE_DUR : CELL_WALK_DUR);
 
     animationQueue.push({
       target: 'player',
@@ -1280,6 +1746,7 @@ function setupAnimations(sim) {
       else if (snd.type === 'spike') sound.playSpike();
       else if (snd.type === 'fail') sound.playFail();
       else if (snd.type === 'crumble') sound.playCrumble();
+      else if (snd.type === 'teleport') sound.playTeleport();
     }, snd.delay);
   });
 
@@ -1364,19 +1831,31 @@ function updateAnimations() {
       const iy = anim.fromY + (anim.toY - anim.fromY) * t;
 
       if (anim.target === 'player') {
-        player.animX = ix;
-        player.animY = iy;
-        
-        // Spike visual trigger
-        if (anim.action === 'spike' && t > 0.3) {
-          activeSpikesAnim[`${anim.toX},${anim.toY}`] = 1.0;
-          particles.add(anim.toX * tileSize + tileSize/2, anim.toY * tileSize + tileSize/2, '#ff1744', 8, 3, 3, 20);
-          shakeScreen(10, 4);
-        }
+        if (anim.action === 'teleport') {
+          if (t <= 0.5) {
+            player.animX = anim.fromX;
+            player.animY = anim.fromY;
+            player.scale = 1.0 - (t * 2);
+          } else {
+            player.animX = anim.toX;
+            player.animY = anim.toY;
+            player.scale = (t - 0.5) * 2;
+          }
+        } else {
+          player.animX = ix;
+          player.animY = iy;
+          
+          // Spike visual trigger
+          if (anim.action === 'spike' && t > 0.3) {
+            activeSpikesAnim[`${anim.toX},${anim.toY}`] = 1.0;
+            particles.add(anim.toX * tileSize + tileSize/2, anim.toY * tileSize + tileSize/2, '#ff1744', 8, 3, 3, 20);
+            shakeScreen(10, 4);
+          }
 
-        // Fall visual shrink
-        if (anim.action === 'fall') {
-          player.scale = 1.0 - t; // Shrinks to 0
+          // Fall visual shrink
+          if (anim.action === 'fall') {
+            player.scale = 1.0 - t; // Shrinks to 0
+          }
         }
       } else if (anim.target === 'box') {
         const b = boxes.find(bx => bx.id === anim.id);
@@ -1464,10 +1943,12 @@ function showOverlay(title, desc, failed) {
   const descEl = document.getElementById('overlayDesc');
   const btnNext = document.getElementById('btnOverlayNext');
   const btnRestart = document.getElementById('btnOverlayRestart');
+  const btnMenu = document.getElementById('btnOverlayMenu');
   const starsEl = document.getElementById('overlayStarsDisplay');
 
   titleEl.textContent = title;
   overlay.classList.remove('hidden');
+  if (btnMenu) btnMenu.classList.remove('hidden');
 
   if (failed) {
     overlay.classList.add('failure');
@@ -1477,26 +1958,52 @@ function showOverlay(title, desc, failed) {
     descEl.textContent = desc;
   } else {
     overlay.classList.remove('failure');
-    btnNext.textContent = "다음 레벨";
     
-    // Calculate and render stars
-    let stars = 1;
-    if (starsEl) {
-      starsEl.innerHTML = '';
-      const lvl = DEFAULT_LEVELS[currentLevelIdx];
-      if (lvl) {
-        const spentAP = maxAP - remainingAP;
-        const optimalAP = lvl.optimalAP || 0;
-        const threeStarLimit = optimalAP;
-        const twoStarLimit = Math.floor(optimalAP * 1.3);
-
-        if (spentAP <= threeStarLimit) {
-          stars = 3;
-        } else if (spentAP <= twoStarLimit) {
-          stars = 2;
+    if (window.customMapMode === 'editor') {
+      btnNext.textContent = "에디터로 복귀";
+      if (btnMenu) btnMenu.classList.add('hidden');
+      if (starsEl) {
+        starsEl.innerHTML = '';
+        for (let i = 1; i <= 3; i++) {
+          const starIcon = document.createElement('span');
+          starIcon.className = 'star-icon active';
+          starIcon.textContent = '★';
+          starIcon.style.animationDelay = `${(i - 1) * 0.15}s`;
+          starsEl.appendChild(starIcon);
         }
+      }
+      editorOptimalAP = maxAP - remainingAP;
+      editorOptimalMoves = moveCount;
+      editorOptimalPath = clearPath;
+      editorVerified = true;
 
-        // Add 3 star icons with sequential pop animations
+      // Automatically update the editor's Max AP to the optimal AP spent to clear
+      editorMaxAP = editorOptimalAP;
+      const maxApInput = document.getElementById('editorMapMaxApInput');
+      if (maxApInput) {
+        maxApInput.value = editorMaxAP;
+      }
+      saveEditorDraftSilent();
+      
+      const publishBtn = document.getElementById('btnEditorPublish');
+      if (publishBtn) publishBtn.disabled = false;
+
+      descEl.innerHTML = `모험가님이 제작한 퍼즐의 탈출 검증에 성공했습니다!<br>최적 AP: ${editorOptimalAP} AP<br>최적 이동 횟수: ${editorOptimalMoves} Moves<br>이제 에디터로 복귀하여 이 맵을 서버에 배포할 수 있습니다!`;
+      btnRestart.classList.remove('hidden');
+    } else if (window.customMapMode === 'play') {
+      btnNext.textContent = "목록으로 복귀";
+      
+      const spentAP = maxAP - remainingAP;
+      const optimalAP = currentPlayingCustomMap.optimalAP || 0;
+      let stars = 1;
+      if (spentAP <= optimalAP) {
+        stars = 3;
+      } else if (spentAP <= Math.floor(optimalAP * 1.3)) {
+        stars = 2;
+      }
+      
+      if (starsEl) {
+        starsEl.innerHTML = '';
         for (let i = 1; i <= 3; i++) {
           const starIcon = document.createElement('span');
           starIcon.className = 'star-icon' + (i <= stars ? ' active' : '');
@@ -1505,45 +2012,80 @@ function showOverlay(title, desc, failed) {
           starsEl.appendChild(starIcon);
         }
       }
-    }
-    
-    // Save best record for current level and update left HUD
-    saveBestRecord(currentLevelIdx, stars, moveCount);
-    updateRecordHUD();
-
-    // Check if all levels are completed to display the campaign summary table
-    if (checkAllLevelsCleared()) {
-      let tableHtml = `<div style="margin-top: 15px; text-align: center;">`;
-      tableHtml += `<p style="color: #00e676; font-weight: bold; font-size: 1.15rem; text-shadow: 0 0 10px rgba(0, 230, 118, 0.6); margin-bottom: 10px;">🏆 모든 스테이지 클리어! 🏆</p>`;
-      tableHtml += `<table class="overlay-summary-table">`;
-      tableHtml += `<thead><tr><th>스테이지</th><th>최고 별점</th><th>최소 이동</th></tr></thead><tbody>`;
       
-      let totalStars = 0;
-      let totalMoves = 0;
-      DEFAULT_LEVELS.forEach((lvl, idx) => {
-        const best = getBestRecord(idx);
-        const sCount = best ? best.stars : 0;
-        let mCount = 0;
-        if (best && best.moves) {
-          mCount = parseInt(String(best.moves).replace('이동', '').trim(), 10) || 0;
+      saveCustomMapRecord(currentPlayingCustomMap.id, stars, moveCount);
+      
+      descEl.innerHTML = `친구의 맵을 멋지게 클리어했습니다!<br>소비 AP: ${maxAP - remainingAP} AP<br>이동 횟수: ${moveCount} Moves<br>(친구의 최적 AP: ${currentPlayingCustomMap.optimalAP} AP)`;
+      btnRestart.classList.remove('hidden');
+    } else {
+      btnNext.textContent = "다음 레벨";
+      
+      // Calculate and render stars
+      let stars = 1;
+      if (starsEl) {
+        starsEl.innerHTML = '';
+        const lvl = DEFAULT_LEVELS[currentLevelIdx];
+        if (lvl) {
+          const spentAP = maxAP - remainingAP;
+          const optimalAP = lvl.optimalAP || 0;
+          const threeStarLimit = optimalAP;
+          const twoStarLimit = Math.floor(optimalAP * 1.3);
+
+          if (spentAP <= threeStarLimit) {
+            stars = 3;
+          } else if (spentAP <= twoStarLimit) {
+            stars = 2;
+          }
+
+          // Add 3 star icons with sequential pop animations
+          for (let i = 1; i <= 3; i++) {
+            const starIcon = document.createElement('span');
+            starIcon.className = 'star-icon' + (i <= stars ? ' active' : '');
+            starIcon.textContent = '★';
+            starIcon.style.animationDelay = `${(i - 1) * 0.15}s`;
+            starsEl.appendChild(starIcon);
+          }
         }
-        totalStars += sCount;
-        totalMoves += mCount;
-        tableHtml += `<tr><td>${idx+1}층: ${lvl.name.split('. ')[1] || lvl.name}</td><td style="color: #ffea00;">${'★'.repeat(sCount)}</td><td>${mCount} Move</td></tr>`;
-      });
+      }
       
-      tableHtml += `<tr class="total-row"><td>총 합계 (Total)</td><td style="color: #ffea00;">★ ${totalStars} / 15</td><td>${totalMoves} Moves</td></tr>`;
-      tableHtml += `</tbody></table></div>`;
-      desc = tableHtml;
-    }
+      // Save best record for current level and update left HUD
+      saveBestRecord(currentLevelIdx, stars, moveCount);
+      updateRecordHUD();
 
-    descEl.innerHTML = desc;
-    
-    // If last level, disable next button
-    if (!isCustomTestPlay() && currentLevelIdx >= DEFAULT_LEVELS.length - 1) {
-      btnNext.textContent = "캠페인 완료!";
+      // Check if all levels are completed to display the campaign summary table
+      if (checkAllLevelsCleared()) {
+        let tableHtml = `<div style="margin-top: 15px; text-align: center;">`;
+        tableHtml += `<p style="color: #00e676; font-weight: bold; font-size: 1.15rem; text-shadow: 0 0 10px rgba(0, 230, 118, 0.6); margin-bottom: 10px;">🏆 모든 스테이지 클리어! 🏆</p>`;
+        tableHtml += `<table class="overlay-summary-table">`;
+        tableHtml += `<thead><tr><th>스테이지</th><th>최고 별점</th><th>최소 이동</th></tr></thead><tbody>`;
+        
+        let totalStars = 0;
+        let totalMoves = 0;
+        DEFAULT_LEVELS.forEach((lvl, idx) => {
+          const best = getBestRecord(idx);
+          const sCount = best ? best.stars : 0;
+          let mCount = 0;
+          if (best && best.moves) {
+            mCount = parseInt(String(best.moves).replace('이동', '').trim(), 10) || 0;
+          }
+          totalStars += sCount;
+          totalMoves += mCount;
+          tableHtml += `<tr><td>${getLevelDisplayNumber(idx)}: ${lvl.name.split('. ')[1] || lvl.name}</td><td style="color: #ffea00;">${'★'.repeat(sCount)}</td><td>${mCount} Move</td></tr>`;
+        });
+        
+        tableHtml += `<tr class="total-row"><td>총 합계 (Total)</td><td style="color: #ffea00;">★ ${totalStars} / ${DEFAULT_LEVELS.length * 3}</td><td>${totalMoves} Moves</td></tr>`;
+        tableHtml += `</tbody></table></div>`;
+        desc = tableHtml;
+      }
+
+      descEl.innerHTML = desc;
+      
+      // If last level, disable next button
+      if (!isCustomTestPlay() && currentLevelIdx >= DEFAULT_LEVELS.length - 1) {
+        btnNext.textContent = "캠페인 완료!";
+      }
+      btnRestart.classList.remove('hidden');
     }
-    btnRestart.classList.remove('hidden');
   }
 }
 
@@ -1557,6 +2099,34 @@ function isCustomTestPlay() {
 // --------------------------------------------------------------------------
 
 function gameLoop() {
+  // Update stage play timer based on actual play state
+  const now = Date.now();
+  if (gameStatus === 'playing' && isGameActive() && !window.isReplaying) {
+    const best = !currentCustomLevelData ? getBestRecord(currentLevelIdx) : null;
+    const alreadyThreeStars = best && best.stars === 3;
+    if (window.lastTimerTick && !alreadyThreeStars) {
+      const prevSec = Math.floor((window.stagePlayTime || 0) / 1000);
+      window.stagePlayTime = (window.stagePlayTime || 0) + (now - window.lastTimerTick);
+      const currSec = Math.floor(window.stagePlayTime / 1000);
+
+      const user = localStorage.getItem('runic_dungeon_user') || '';
+      if (user && !currentCustomLevelData) {
+        if (currSec !== prevSec) {
+          localStorage.setItem(`runic_dungeon_play_time_${user}_${currentLevelIdx}`, Math.round(window.stagePlayTime));
+        }
+      }
+    }
+    // Update Timer Display in HUD in real-time
+    const timerEl = document.getElementById('timerDisplay');
+    if (timerEl) {
+      const totalSec = Math.floor((window.stagePlayTime || 0) / 1000);
+      const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+      const s = String(totalSec % 60).padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+    }
+  }
+  window.lastTimerTick = now;
+
   updateAnimations();
   particles.update();
 
@@ -1625,6 +2195,12 @@ function draw() {
 function drawTile(x, y, type) {
   const px = x * tileSize;
   const py = y * tileSize;
+
+  if (type === ' ') {
+    ctx.fillStyle = '#080c14';
+    ctx.fillRect(px, py, tileSize, tileSize);
+    return;
+  }
 
   // Background cell floor
   ctx.fillStyle = '#101424';
@@ -2343,6 +2919,72 @@ function drawTile(x, y, type) {
       ctx.restore();
       break;
 
+    case 'P': { // Teleport Portal (Color-coded glowing triangle based on pair connection)
+      ctx.save();
+      ctx.translate(px + tileSize/2, py + tileSize/2);
+
+      // Determine portal color
+      let portalColor = '#00e676';
+      let portalInnerColor = '#a3ffc1';
+      let fillStyleColor = 'rgba(0, 230, 118, 0.15)';
+
+      if (levelPortalConnections && levelPortalConnections.length > 0) {
+        const portalConnIdx = levelPortalConnections.findIndex(c => 
+          (c.p1.x === x && c.p1.y === y) || (c.p2.x === x && c.p2.y === y)
+        );
+        if (portalConnIdx !== -1) {
+          const colors = [
+            { outer: '#00e676', inner: '#a3ffc1', fill: 'rgba(0, 230, 118, 0.15)' }, // Green
+            { outer: '#ffea00', inner: '#fff9c4', fill: 'rgba(255, 234, 0, 0.15)' }, // Yellow
+            { outer: '#00b0ff', inner: '#b3e5fc', fill: 'rgba(0, 176, 255, 0.15)' }, // Blue
+            { outer: '#ff1744', inner: '#ffcdd2', fill: 'rgba(255, 23, 68, 0.15)' }  // Red
+          ];
+          const choice = colors[portalConnIdx % colors.length];
+          portalColor = choice.outer;
+          portalInnerColor = choice.inner;
+          fillStyleColor = choice.fill;
+        } else {
+          // Unlinked portal: draw with gray/muted color
+          portalColor = '#9e9e9e';
+          portalInnerColor = '#e0e0e0';
+          fillStyleColor = 'rgba(158, 158, 158, 0.15)';
+        }
+      }
+
+      ctx.strokeStyle = portalColor;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = portalColor;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = fillStyleColor;
+
+      ctx.beginPath();
+      ctx.moveTo(0, -tileSize/3.2);
+      ctx.lineTo(tileSize/3.5, tileSize/3.5);
+      ctx.lineTo(-tileSize/3.5, tileSize/3.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Add a smaller inner glowing triangle
+      ctx.strokeStyle = portalInnerColor;
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, -tileSize/6.5);
+      ctx.lineTo(tileSize/7, tileSize/7);
+      ctx.lineTo(-tileSize/7, tileSize/7);
+      ctx.closePath();
+      ctx.stroke();
+
+      // Spawn small floating magic sparkles around portal
+      if (Math.random() < 0.05) {
+        particles.add(px + tileSize/2, py + tileSize/2, portalColor, 1, 0.5, 2, 25);
+      }
+
+      ctx.restore();
+      break;
+    }
+
     case '.': // Normal Floor
     default:
       // Draw subtle centered tile border inside
@@ -2565,6 +3207,8 @@ function drawEditorConnections() {
 }
 
 function drawGameplayConnections() {
+  if (currentChapterIdx !== 0 || window.customMapMode) return;
+
   connections.forEach((conn, index) => {
     const sx = conn.switch.x * tileSize + tileSize/2;
     const sy = conn.switch.y * tileSize + tileSize/2;
@@ -2631,19 +3275,31 @@ function handleKeyDown(e) {
       break;
     case 'z':
     case 'Z':
-      undo();
+    case 'ㅋ':
+      if (isGameActive() && !window.isReplaying && isEditorTesting) {
+        e.preventDefault();
+        undo();
+        canvas.focus();
+      }
       break;
     case 'y':
     case 'Y':
-      redo();
+    case 'ㅛ':
+      if (isGameActive() && !window.isReplaying && isEditorTesting) {
+        e.preventDefault();
+        redo();
+        canvas.focus();
+      }
       break;
     case 'r':
     case 'R':
-      restartLevel();
-      break;
-    case 'Escape':
-      // Open level list selector dropdown
-      document.getElementById('levelSelect').focus();
+    case 'ㄱ':
+    case 'ㄲ':
+      if (isGameActive() && !window.isReplaying) {
+        e.preventDefault();
+        restartLevel();
+        canvas.focus();
+      }
       break;
   }
 }
@@ -2654,12 +3310,22 @@ function isGameActive() {
   const stage = document.getElementById('stageSelectOverlay');
   const leaderboard = document.getElementById('leaderboardModal');
   const help = document.getElementById('helpModal');
-  
+  const modeSelect = document.getElementById('modeSelectOverlay');
+  const customMapMenu = document.getElementById('customMapMenuOverlay');
+  const customMapList = document.getElementById('customMapListOverlay');
+  const mapEditor = document.getElementById('mapEditorOverlay');
+  const friendMaps = document.getElementById('friendMapsOverlay');
+
   return (!login || login.classList.contains('hidden')) &&
          (!chapter || chapter.classList.contains('hidden')) &&
          (!stage || stage.classList.contains('hidden')) &&
          (!leaderboard || leaderboard.classList.contains('hidden')) &&
-         (!help || help.classList.contains('hidden'));
+         (!help || help.classList.contains('hidden')) &&
+         (!modeSelect || modeSelect.classList.contains('hidden')) &&
+         (!customMapMenu || customMapMenu.classList.contains('hidden')) &&
+         (!customMapList || customMapList.classList.contains('hidden')) &&
+         (!mapEditor || mapEditor.classList.contains('hidden')) &&
+         (!friendMaps || friendMaps.classList.contains('hidden'));
 }
 
 function setupTouchControls() {
@@ -2810,7 +3476,17 @@ function redo() {
 }
 
 function restartLevel() {
-  loadLevel(currentLevelIdx);
+  loadLevel(currentLevelIdx, currentCustomLevelData, true);
+}
+
+function formatTime(seconds) {
+  if (seconds === undefined || seconds === null || isNaN(seconds)) return '';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m > 0) {
+    return `${m}분 ${s}초`;
+  }
+  return `${s}초`;
 }
 
 // --------------------------------------------------------------------------
@@ -2831,37 +3507,197 @@ function saveBestRecord(levelIdx, stars, moves) {
   let shouldUpdate = false;
   let timestamp = Date.now();
   
+  const username = localStorage.getItem('runic_dungeon_user') || '';
+  let retriesToSave = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${username}_${levelIdx}`), 10) || 1;
+  let clearTimeToSave = Math.round((window.stagePlayTime || 0) / 1000);
+  
   if (!currentBest) {
     shouldUpdate = true;
   } else {
     // Robust moves parsing to handle legacy string data like "21이동" or "21 Move"
     const currentBestMoves = parseInt(String(currentBest.moves).replace(/[^0-9]/g, ''), 10) || 0;
+    const currentBestTime = parseInt(currentBest.clearTime || 0, 10) || 999999;
+    
     if (stars > currentBest.stars) {
       shouldUpdate = true;
-    } else if (stars === currentBest.stars && moves < currentBestMoves) {
-      shouldUpdate = true;
-    } else if (stars === currentBest.stars && moves === currentBestMoves) {
-      // Same stars and same moves: always allow updating to save/update the path!
-      shouldUpdate = true;
-      if (currentBest.timestamp) {
-        timestamp = currentBest.timestamp;
+    } else if (stars === currentBest.stars) {
+      if (moves < currentBestMoves) {
+        shouldUpdate = true;
+      } else if (moves === currentBestMoves) {
+        // If moves are equal, update only if clear time is better (less) or if no clearTime was saved
+        if (clearTimeToSave < currentBestTime || !currentBest.clearTime) {
+          shouldUpdate = true;
+        } else {
+          // Same moves, same or worse time: update path only, keep old timestamp, clearTime, and retries
+          shouldUpdate = true;
+          timestamp = currentBest.timestamp;
+          clearTimeToSave = currentBest.clearTime || clearTimeToSave;
+          retriesToSave = currentBest.retries || retriesToSave;
+        }
       }
     }
   }
   
   if (shouldUpdate) {
+    if (stars === 3 && username) {
+      localStorage.removeItem(`runic_dungeon_play_time_${username}_${levelIdx}`);
+    }
+
     localStorage.setItem(`runic_dungeon_best_record_${levelIdx}`, JSON.stringify({ 
       stars, 
       moves, 
       path: clearPath.join(''),
-      timestamp 
+      timestamp,
+      retries: retriesToSave,
+      clearTime: clearTimeToSave
     }));
     
     // Cloud sync upload
-    const username = localStorage.getItem('runic_dungeon_user');
     if (username) {
       uploadUserRecordsCloud(username);
     }
+  }
+}
+
+function saveCustomMapRecord(mapId, stars, moves) {
+  const username = localStorage.getItem('runic_dungeon_user') || '';
+  if (!username) return;
+
+  const recordKey = `runic_dungeon_custom_record_${username}_${mapId}`;
+  const currentBestStr = localStorage.getItem(recordKey);
+  const currentBest = currentBestStr ? JSON.parse(currentBestStr) : null;
+  
+  let retriesToSave = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${username}_${mapId}`), 10) || 1;
+  let clearTimeToSave = Math.round((window.stagePlayTime || 0) / 1000);
+  
+  let shouldUpdate = false;
+  
+  if (!currentBest) {
+    shouldUpdate = true;
+  } else {
+    const currentBestMoves = parseInt(String(currentBest.moves).replace(/[^0-9]/g, ''), 10) || 0;
+    const currentBestTime = parseInt(currentBest.clearTime || 0, 10) || 999999;
+    
+    if (stars > currentBest.stars) {
+      shouldUpdate = true;
+    } else if (stars === currentBest.stars) {
+      if (moves < currentBestMoves) {
+        shouldUpdate = true;
+      } else if (moves === currentBestMoves) {
+        if (clearTimeToSave < currentBestTime || !currentBest.clearTime) {
+          shouldUpdate = true;
+        }
+      }
+    }
+  }
+  
+  if (shouldUpdate) {
+    if (stars === 3) {
+      localStorage.removeItem(`runic_dungeon_play_time_${username}_${mapId}`);
+    }
+
+    localStorage.setItem(recordKey, JSON.stringify({ 
+      stars, 
+      moves, 
+      path: clearPath.join(''),
+      timestamp: Date.now(),
+      retries: retriesToSave,
+      clearTime: clearTimeToSave
+    }));
+    
+    uploadUserRecordsCloud(username);
+  }
+}
+
+async function showCustomMapLeaderboard(mapId, mapName) {
+  const modal = document.getElementById('customLeaderboardModal');
+  const tbody = document.getElementById('customLeaderboardTableBody');
+  tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px;">데이터를 불러오는 중... (Syncing Cloud)</td></tr>';
+  modal.classList.remove('hidden');
+
+  const modalTitle = modal.querySelector('.modal-header h2');
+  if (modalTitle) {
+    modalTitle.textContent = `🏆 [${mapName}] 맵 랭킹`;
+  }
+
+  const users = Object.keys(USER_PASSWORDS).filter(u => u !== '관리자');
+  const currentLoggedUser = localStorage.getItem('runic_dungeon_user');
+
+  try {
+    const dbData = await fetchCloudData();
+    if (!dbData) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
+      return;
+    }
+
+    const records = [];
+
+    users.forEach(u => {
+      const userRecords = dbData[u] || {};
+      const rec = userRecords[mapId];
+      if (rec) {
+        records.push({
+          name: u,
+          stars: parseInt(rec.stars, 10) || 0,
+          moves: parseInt(rec.moves, 10) || 0,
+          retries: parseInt(rec.retries || 1, 10) || 1,
+          clearTime: parseInt(rec.clearTime || 0, 10) || 0,
+          timestamp: parseInt(rec.timestamp || 0, 10) || 0
+        });
+      }
+    });
+
+    records.sort((a, b) => {
+      if (b.stars !== a.stars) {
+        return b.stars - a.stars;
+      }
+      if (a.moves !== b.moves) {
+        return a.moves - b.moves;
+      }
+      if (a.clearTime !== b.clearTime) {
+        return a.clearTime - b.clearTime;
+      }
+      return a.timestamp - b.timestamp;
+    });
+
+    tbody.innerHTML = '';
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: var(--text-muted);">아직 클리어 기록이 없습니다. 첫 클리어에 도전해보세요!</td></tr>';
+      return;
+    }
+
+    records.forEach((stat, index) => {
+      const row = document.createElement('tr');
+      if (stat.name === currentLoggedUser) {
+        row.className = 'current-user-row';
+      }
+
+      let rankText = `${index + 1}`;
+      if (index === 0) rankText = '<span class="rank-badge rank-1">1</span>';
+      else if (index === 1) rankText = '<span class="rank-badge rank-2">2</span>';
+      else if (index === 2) rankText = '<span class="rank-badge rank-3">3</span>';
+
+      const dateStr = stat.timestamp ? new Date(stat.timestamp).toLocaleString('ko-KR', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : '-';
+
+      row.innerHTML = `
+        <td>${rankText}</td>
+        <td>${getUserIcon(stat.name)} ${stat.name}</td>
+        <td style="color: #ffea00; font-weight: bold;">★ ${stat.stars}</td>
+        <td>${stat.retries}회</td>
+        <td>${formatTime(stat.clearTime)}</td>
+        <td style="font-size: 0.85rem; color: var(--text-muted);">${dateStr}</td>
+      `;
+      tbody.appendChild(row);
+    });
+
+  } catch (e) {
+    console.error("Custom Leaderboard fetch error:", e);
+    tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
   }
 }
 
@@ -2880,6 +3716,10 @@ function updateRecordHUD() {
     
     el.innerHTML = '';
     DEFAULT_LEVELS.forEach((lvl, idx) => {
+      const levelChapter = lvl.chapter !== undefined ? lvl.chapter : 0;
+      if (levelChapter !== currentChapterIdx) return;
+      if (lvl.locked) return; // Skip locked stages in record HUD
+
       const best = getBestRecord(idx);
       const isActive = idx === currentLevelIdx;
       
@@ -2888,7 +3728,7 @@ function updateRecordHUD() {
       
       const nameSpan = document.createElement('span');
       nameSpan.className = 'record-level-name';
-      nameSpan.textContent = `${idx + 1}층: ${lvl.name.split('. ')[1] || lvl.name}`;
+      nameSpan.textContent = `${getLevelDisplayNumber(idx)}: ${lvl.name.split('. ')[1] || lvl.name}`;
       
       const statsDiv = document.createElement('div');
       statsDiv.className = 'record-stats';
@@ -2930,7 +3770,7 @@ function checkLoginState() {
   if (user && USER_PASSWORDS[user]) {
     hideLoginOverlay(user);
     syncUserRecordsFromCloud(user);
-    showChapterSelectMenu();
+    showModeSelectMenu();
   } else {
     showLoginOverlay();
   }
@@ -2938,13 +3778,16 @@ function checkLoginState() {
 
 function showLoginOverlay() {
   localStorage.removeItem('runic_dungeon_user');
+  document.getElementById('appContainer').classList.add('hidden');
   document.getElementById('loginOverlay').classList.remove('hidden');
   document.getElementById('loginUserList').classList.remove('hidden');
   document.getElementById('loginPasswordForm').classList.add('hidden');
   document.getElementById('loginErrorMsg').classList.add('hidden');
   document.getElementById('userProfileTag').classList.add('hidden');
   document.getElementById('btnLeaderboard').classList.add('hidden');
-  document.getElementById('btnLogout').classList.add('hidden');
+  document.getElementById('btnAdminPaths').classList.add('hidden');
+  document.getElementById('btnChapterSelectAdminPaths').classList.add('hidden');
+  document.getElementById('btnStageSelectAdminPaths').classList.add('hidden');
 }
 
 function hideLoginOverlay(username) {
@@ -2956,7 +3799,20 @@ function hideLoginOverlay(username) {
   document.getElementById('userProfileIcon').innerHTML = getUserIcon(username);
   document.getElementById('loggedInUserName').textContent = username;
   document.getElementById('btnLeaderboard').classList.remove('hidden');
-  document.getElementById('btnLogout').classList.remove('hidden');
+  
+  const btnAdminPaths = document.getElementById('btnAdminPaths');
+  const btnChapterSelectAdminPaths = document.getElementById('btnChapterSelectAdminPaths');
+  const btnStageSelectAdminPaths = document.getElementById('btnStageSelectAdminPaths');
+  
+  if (username === '관리자') {
+    if (btnAdminPaths) btnAdminPaths.classList.remove('hidden');
+    if (btnChapterSelectAdminPaths) btnChapterSelectAdminPaths.classList.remove('hidden');
+    if (btnStageSelectAdminPaths) btnStageSelectAdminPaths.classList.remove('hidden');
+  } else {
+    if (btnAdminPaths) btnAdminPaths.classList.add('hidden');
+    if (btnChapterSelectAdminPaths) btnChapterSelectAdminPaths.classList.add('hidden');
+    if (btnStageSelectAdminPaths) btnStageSelectAdminPaths.classList.add('hidden');
+  }
 }
 
 function attemptLogin(username, password) {
@@ -2968,7 +3824,7 @@ function attemptLogin(username, password) {
     sound.init();
     hideLoginOverlay(username);
     syncUserRecordsFromCloud(username);
-    showChapterSelectMenu();
+    showModeSelectMenu();
   } else {
     // Show error message as requested
     errorMsgEl.textContent = `${username}이 아닙니다! 나가주세요!`;
@@ -3001,6 +3857,18 @@ async function uploadUserRecordsCloud(username) {
         userRecords[idx] = JSON.parse(rec);
       }
     });
+
+    const prefix = `runic_dungeon_custom_record_${username}_`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        const mapId = key.substring(prefix.length);
+        const rec = localStorage.getItem(key);
+        if (rec) {
+          userRecords[mapId] = JSON.parse(rec);
+        }
+      }
+    }
 
     let dbData = {};
     let fetchSuccess = false;
@@ -3089,11 +3957,23 @@ async function syncUserRecordsFromCloud(username) {
   }
 }
 
-async function showLeaderboardModal() {
+async function showLeaderboardModal(chapterIdx = null) {
+  window.currentLeaderboardChapterIdx = chapterIdx;
   const modal = document.getElementById('leaderboardModal');
   const tbody = document.getElementById('leaderboardTableBody');
   tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px;">데이터를 불러오는 중... (Syncing Cloud)</td></tr>';
   modal.classList.remove('hidden');
+
+  const modalTitle = modal.querySelector('.modal-header h2');
+  if (modalTitle) {
+    if (chapterIdx === 0) {
+      modalTitle.textContent = '🏆 챕터 순위표 : 기초 훈련';
+    } else if (chapterIdx !== null) {
+      modalTitle.textContent = `🏆 챕터 순위표 : ${chapterIdx}장`;
+    } else {
+      modalTitle.textContent = '🏆 실시간 명예의 전당 (순위표)';
+    }
+  }
   
   const users = Object.keys(USER_PASSWORDS).filter(u => u !== '관리자');
   const currentLoggedUser = localStorage.getItem('runic_dungeon_user');
@@ -3115,17 +3995,26 @@ async function showLeaderboardModal() {
     const statsList = users.map(u => {
       const userRecords = dbData[u] || {};
       let totalStars = 0;
-      let totalMoves = 0;
+      let totalRetries = 0;
+      let totalTime = 0;
       let clearedStages = [];
       let latestClearTime = 0;
       
       DEFAULT_LEVELS.forEach((lvl, idx) => {
+        const ch = lvl.chapter !== undefined ? lvl.chapter : 0;
+        if (chapterIdx === null && ch === 0) return;
+        if (chapterIdx !== null && ch !== chapterIdx) return;
+        if (lvl.locked) return;
+
         const rec = userRecords[idx];
         if (rec) {
           totalStars += parseInt(rec.stars, 10) || 0;
-          const moveVal = parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0;
-          totalMoves += moveVal;
-          clearedStages.push(idx + 1);
+          const retryVal = parseInt(rec.retries || 1, 10) || 1;
+          totalRetries += retryVal;
+          const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
+          totalTime += timeVal;
+          
+          clearedStages.push(getLevelDisplayNumber(idx));
           
           if (rec.timestamp) {
             const t = parseInt(rec.timestamp, 10) || 0;
@@ -3137,16 +4026,17 @@ async function showLeaderboardModal() {
       });
       
       const numCleared = clearedStages.length;
-      const avgMoves = numCleared > 0 ? (totalMoves / numCleared).toFixed(1) : 0;
+      const avgRetries = numCleared > 0 ? parseFloat((totalRetries / numCleared).toFixed(1)) : 0;
+      const avgTime = numCleared > 0 ? Math.round(totalTime / numCleared) : 0;
       
       return {
         name: u,
         totalStars,
-        totalMoves,
-        avgMoves: parseFloat(avgMoves),
-        clearedStages: clearedStages.join(', ') || '-',
+        avgRetries,
+        avgTime,
         numCleared,
-        latestClearTime
+        latestClearTime,
+        userRecords
       };
     });
     
@@ -3158,11 +4048,11 @@ async function showLeaderboardModal() {
       if (b.totalStars !== a.totalStars) {
         return b.totalStars - a.totalStars;
       }
-      if (a.totalMoves !== b.totalMoves) {
-        return a.totalMoves - b.totalMoves;
+      if (a.avgTime !== b.avgTime) {
+        return a.avgTime - b.avgTime;
       }
-      if (a.avgMoves !== b.avgMoves) {
-        return a.avgMoves - b.avgMoves;
+      if (a.avgRetries !== b.avgRetries) {
+        return a.avgRetries - b.avgRetries;
       }
       
       // Tie-breaker: earlier achievement time gets higher rank (0/legacy timestamps treated as older)
@@ -3190,65 +4080,306 @@ async function showLeaderboardModal() {
         <td>${rankText}</td>
         <td>${getUserIcon(stat.name)} ${stat.name}</td>
         <td style="color: #ffea00; font-weight: bold;">★ ${stat.totalStars}</td>
-        <td>${stat.numCleared > 0 ? stat.avgMoves : '-'}</td>
-        <td>${stat.numCleared > 0 ? stat.totalMoves : '-'}</td>
-        <td style="font-size: 0.8rem; color: #00e676;">${stat.clearedStages}층</td>
+        <td>${stat.numCleared > 0 ? stat.avgRetries.toFixed(1) + '회' : '-'}</td>
+        <td>${stat.numCleared > 0 ? formatTime(stat.avgTime) : '-'}</td>
+        <td style="font-size: 0.95rem; color: #00e676; font-weight: bold;">${stat.numCleared}개</td>
       `;
       tbody.appendChild(row);
-    });
 
-    // Render Admin Path View Panel if the logged user is '관리자'
-    const adminPathView = document.getElementById('adminPathView');
-    const adminPathList = document.getElementById('adminPathList');
-    if (adminPathView && adminPathList) {
-      if (currentLoggedUser === '관리자') {
-        adminPathView.classList.remove('hidden');
-        
-        const allUsers = Object.keys(USER_PASSWORDS);
-        let pathHtml = '';
-        
-        allUsers.forEach(u => {
-          const userRecords = dbData[u] || {};
-          let userPaths = [];
-          let hasAnyRecord = false;
-          
-          DEFAULT_LEVELS.forEach((lvl, idx) => {
-            const rec = userRecords[idx];
-            if (rec) {
-              hasAnyRecord = true;
-              const levelName = lvl.name.split('. ')[1] || lvl.name;
-              const pathDisplay = rec.path 
-                ? ` <span style="cursor: pointer; background: var(--color-primary); color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 0.65rem; font-weight: bold; margin-left: 5px; box-shadow: 0 0 4px var(--color-primary); user-select: none;" onclick="window.startReplay('${u}', ${idx}, '${rec.path}')">▶ 재생</span>`
-                : `<span style="color: var(--text-muted); font-style: italic;">[경로 기록 없음]</span>`;
-              
-              userPaths.push(`<div style="margin-bottom: 6px; padding-left: 10px; border-left: 2px solid var(--color-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">` +
-                `<div><span style="color: var(--color-primary); font-weight: bold;">${idx+1}층 (${levelName}):</span> ` +
-                `${pathDisplay}</div>` +
-                ` <div style="color: var(--text-muted); font-size: 0.7rem;">(${rec.moves} Move, <span style="color: #ffea00; text-shadow: 0 0 3px rgba(255, 234, 0, 0.5); font-weight: bold;">${'★'.repeat(rec.stars)}</span>)</div>` +
-                `</div>`);
-            }
-          });
-          
-          if (hasAnyRecord) {
-            pathHtml += `<div style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">`;
-            pathHtml += `<div style="font-weight: bold; color: #fff; margin-bottom: 8px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 6px;">` +
-              `<div style="display: flex; align-items: center; gap: 6px;"><span>${getUserIcon(u)}</span><span>${u} 모험가</span></div>` +
-              `<button onclick="window.deleteUserRecord('${u}')" class="btn btn-danger" style="padding: 2px 8px; font-size: 0.7rem; height: auto; line-height: 1.2; font-family: var(--font-body); margin: 0; background: #ff1744; border-radius: 4px; border: none; box-shadow: 0 0 5px rgba(255, 23, 68, 0.4); cursor: pointer; color: white;">기록 삭제</button>` +
-              `</div>`;
-            pathHtml += userPaths.join('');
-            pathHtml += `</div>`;
-          }
-        });
-        
-        adminPathList.innerHTML = pathHtml || '<div style="color: var(--text-muted); text-align: center; padding: 10px;">아직 업로드된 클리어 경로 데이터가 없습니다.</div>';
-      } else {
-        adminPathView.classList.add('hidden');
+      // 상세 기록용 행 생성 및 추가
+      let stageListHtml = '';
+      let starListHtml = '';
+      let attemptListHtml = '';
+      let timeListHtml = '';
+      let statusListHtml = '';
+      let hasDetails = false;
+
+      DEFAULT_LEVELS.forEach((lvl, idx) => {
+        const ch = lvl.chapter !== undefined ? lvl.chapter : 0;
+        if (chapterIdx === null && ch === 0) return;
+        if (chapterIdx !== null && ch !== chapterIdx) return;
+        if (lvl.locked) return;
+
+        hasDetails = true;
+        const displayNum = getLevelDisplayNumber(idx);
+        const rec = stat.userRecords[idx];
+        if (rec) {
+          const starsVal = parseInt(rec.stars, 10) || 0;
+          const retryVal = parseInt(rec.retries || 1, 10) || 1;
+          const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
+
+          stageListHtml += `<span style="opacity:0.7;">${displayNum}</span><br>`;
+          starListHtml += `★ ${starsVal}<br>`;
+          attemptListHtml += `${retryVal}회<br>`;
+          timeListHtml += `${formatTime(timeVal)}<br>`;
+          statusListHtml += `<span style="color: #00e676;">완료</span><br>`;
+        } else {
+          stageListHtml += `<span style="opacity:0.4;">${displayNum}</span><br>`;
+          starListHtml += `<span style="color: rgba(255,255,255,0.15);">★ 0</span><br>`;
+          attemptListHtml += `<span style="color: rgba(255,255,255,0.15);">-</span><br>`;
+          timeListHtml += `<span style="color: rgba(255,255,255,0.15);">-</span><br>`;
+          statusListHtml += `<span style="color: rgba(255,255,255,0.15);">미진입</span><br>`;
+        }
+      });
+
+      if (hasDetails) {
+        const detailsRow = document.createElement('tr');
+        detailsRow.className = 'details-row';
+        if (stat.name === currentLoggedUser) {
+          detailsRow.classList.add('current-user-details-row');
+        }
+        detailsRow.innerHTML = `
+          <td></td>
+          <td style="font-size: 0.8rem; text-align: center; font-family: monospace; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${stageListHtml}</td>
+          <td style="color: #ffea00; font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${starListHtml}</td>
+          <td style="color: #ff9100; font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${attemptListHtml}</td>
+          <td style="color: #00e5ff; font-size: 0.8rem; font-family: monospace; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${timeListHtml}</td>
+          <td style="font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${statusListHtml}</td>
+        `;
+        tbody.appendChild(detailsRow);
       }
-    }
+    });
     
   } catch (e) {
     console.error('Error fetching leaderboard:', e);
     tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
+  }
+}
+
+window.adminPathsSelectedUser = null;
+window.adminPathsSelectedChapter = null;
+
+function getUserIconLarge(username) {
+  if (username === '엽이') {
+    return `<svg viewBox="0 0 36 36" width="1.2em" height="1.2em" style="vertical-align: middle; display: inline-block;">
+      <defs>
+        <linearGradient id="sliceGradLarge" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#FFF9C4" />
+          <stop offset="40%" stop-color="#FFEE58" />
+          <stop offset="100%" stop-color="#FBC02D" />
+        </linearGradient>
+      </defs>
+      <path d="M 14,24 A 8,8 0 0,1 30,24 Z" fill="url(#sliceGradLarge)" stroke="#F5B041" stroke-width="0.8"/>
+      <path d="M 16,23 A 6,6 0 0,1 28,23 Z" fill="#FFFDE7" opacity="0.6"/>
+      <path d="M 10,28 A 8,8 0 0,1 26,28 Z" fill="url(#sliceGradLarge)" stroke="#F5B041" stroke-width="0.8"/>
+      <path d="M 12,27 A 6,6 0 0,1 24,27 Z" fill="#FFFDE7" opacity="0.6"/>
+      <path d="M 6,32 A 8,8 0 0,1 22,32 Z" fill="url(#sliceGradLarge)" stroke="#F5B041" stroke-width="0.8"/>
+      <path d="M 8,31 A 6,6 0 0,1 20,31 Z" fill="#FFFDE7" opacity="0.6"/>
+    </svg>`;
+  }
+  const icons = {
+    '영기': '🍠',
+    '조씨': '🗡️',
+    '앵웅': '🚬',
+    '관리자': '🛡️'
+  };
+  return icons[username] || '🤖';
+}
+
+window.selectAdminPathsUser = function(user) {
+  window.adminPathsSelectedUser = user;
+  window.adminPathsSelectedChapter = null;
+  showAdminPathsModal();
+};
+
+window.selectAdminPathsChapter = function(chIdx) {
+  window.adminPathsSelectedChapter = chIdx;
+  showAdminPathsModal();
+};
+
+async function showAdminPathsModal() {
+  const modal = document.getElementById('adminPathsModal');
+  const pathListDiv = document.getElementById('adminPathList');
+  const modalTitle = modal.querySelector('.modal-header h2');
+  
+  // Update header text based on drill-down state
+  let headerText = '🕵️ 모험가 클리어 경로';
+  if (window.adminPathsSelectedUser) {
+    headerText += ` > ${window.adminPathsSelectedUser}`;
+    if (window.adminPathsSelectedChapter !== null && window.adminPathsSelectedChapter !== undefined) {
+      const chNames = ["기초 훈련", "제 1장"];
+      headerText += ` > ${chNames[window.adminPathsSelectedChapter] || '기타'}`;
+    }
+  }
+  if (modalTitle) modalTitle.textContent = headerText;
+
+  pathListDiv.innerHTML = '<div style="padding: 20px; text-align: center;">데이터를 불러오는 중... (Syncing Cloud)</div>';
+  modal.classList.remove('hidden');
+  
+  const users = Object.keys(USER_PASSWORDS);
+  
+  try {
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
+    let dbData = {};
+    if (res.ok) {
+      const obj = await res.json();
+      dbData = obj.data || {};
+    } else {
+      console.error("Admin paths fetch failed:", res.status);
+      pathListDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #ff1744;">데이터를 가져오는 중 오류가 발생했습니다. (HTTP ' + res.status + ')</div>';
+      return;
+    }
+    
+    pathListDiv.innerHTML = '';
+    
+    // Filter users who have at least one record
+    const activeUsers = users.filter(u => dbData[u] && Object.keys(dbData[u]).length > 0);
+    
+    // Level 1: Adventurer List
+    if (!window.adminPathsSelectedUser) {
+      if (activeUsers.length === 0) {
+        pathListDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.5);">클리어 경로를 기록한 모험가가 아직 없습니다.</div>';
+        return;
+      }
+      
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(160px, 1fr))';
+      grid.style.gap = '12px';
+      grid.style.marginTop = '10px';
+      
+      activeUsers.forEach(u => {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-secondary';
+        btn.style.cssText = 'padding: 20px 15px; font-size: 1rem; font-weight: bold; background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.15); border-radius: 10px; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: all 0.2s;';
+        
+        btn.onmouseover = () => {
+          btn.style.background = 'rgba(0,229,255,0.2)';
+          btn.style.borderColor = 'rgba(0,229,255,0.35)';
+          btn.style.transform = 'translateY(-2px)';
+        };
+        btn.onmouseout = () => {
+          btn.style.background = 'rgba(0,229,255,0.08)';
+          btn.style.borderColor = 'rgba(0,229,255,0.15)';
+          btn.style.transform = 'translateY(0)';
+        };
+        btn.onclick = () => window.selectAdminPathsUser(u);
+        
+        const count = Object.keys(dbData[u] || {}).length;
+        btn.innerHTML = `
+          <span style="font-size: 1.8rem; line-height: 1;">${getUserIconLarge(u)}</span>
+          <span>${u} 모험가</span>
+          <span style="font-size: 0.75rem; color: rgba(255,255,255,0.5); font-weight: normal;">총 ${count}개 클리어</span>
+        `;
+        grid.appendChild(btn);
+      });
+      
+      pathListDiv.appendChild(grid);
+      return;
+    }
+    
+    // Level 2: Chapter List for Selected User
+    const userRecords = dbData[window.adminPathsSelectedUser] || {};
+    if (window.adminPathsSelectedChapter === null || window.adminPathsSelectedChapter === undefined) {
+      // Back button
+      const backBtn = document.createElement('button');
+      backBtn.className = 'btn btn-secondary';
+      backBtn.style.cssText = 'margin-bottom: 15px; padding: 6px 12px; font-size: 0.8rem; background: rgba(255,255,255,0.15); border: none; cursor: pointer; border-radius: 4px; color: #fff; font-weight: bold; transition: background 0.2s;';
+      backBtn.onmouseover = () => backBtn.style.background = 'rgba(255,255,255,0.25)';
+      backBtn.onmouseout = () => backBtn.style.background = 'rgba(255,255,255,0.15)';
+      backBtn.textContent = '↩️ 모험가 선택으로';
+      backBtn.onclick = () => window.selectAdminPathsUser(null);
+      pathListDiv.appendChild(backBtn);
+      
+      const listContainer = document.createElement('div');
+      listContainer.style.cssText = 'display: flex; flex-direction: column; gap: 10px; margin-top: 5px;';
+      
+      const chapters = [
+        { idx: 0, name: '⚙️ 기초 훈련' },
+        { idx: 1, name: '📦 제 1장: 박스 창고' }
+      ];
+      
+      chapters.forEach(ch => {
+        const clearedInChapter = Object.keys(userRecords).filter(stageIdx => {
+          const lvl = DEFAULT_LEVELS[parseInt(stageIdx, 10)];
+          const chIdx = lvl && lvl.chapter !== undefined ? lvl.chapter : 0;
+          return chIdx === ch.idx;
+        }).length;
+        
+        if (clearedInChapter === 0) return;
+        
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-secondary';
+        btn.style.cssText = 'padding: 14px 20px; text-align: left; font-size: 0.95rem; font-weight: bold; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s;';
+        btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.1)';
+        btn.onmouseout = () => btn.style.background = 'rgba(255,255,255,0.05)';
+        btn.onclick = () => window.selectAdminPathsChapter(ch.idx);
+        
+        btn.innerHTML = `
+          <span>${ch.name}</span>
+          <span style="color: #00e5ff; font-size: 0.8rem; background: rgba(0, 229, 255, 0.15); padding: 3px 8px; border-radius: 12px;">${clearedInChapter}개 완료</span>
+        `;
+        listContainer.appendChild(btn);
+      });
+      
+      pathListDiv.appendChild(listContainer);
+      return;
+    }
+    
+    // Level 3: Stage Clear Cards List
+    // Back button
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn btn-secondary';
+    backBtn.style.cssText = 'margin-bottom: 15px; padding: 6px 12px; font-size: 0.8rem; background: rgba(255,255,255,0.15); border: none; cursor: pointer; border-radius: 4px; color: #fff; font-weight: bold; transition: background 0.2s;';
+    backBtn.onmouseover = () => backBtn.style.background = 'rgba(255,255,255,0.25)';
+    backBtn.onmouseout = () => backBtn.style.background = 'rgba(255,255,255,0.15)';
+    backBtn.textContent = '↩️ 챕터 선택으로';
+    backBtn.onclick = () => window.selectAdminPathsChapter(null);
+    pathListDiv.appendChild(backBtn);
+    
+    const grid = document.createElement('div');
+    grid.className = 'user-stages-grid';
+    grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 5px;';
+    
+    const clearedStageIndices = Object.keys(userRecords)
+      .map(k => parseInt(k, 10))
+      .filter(stageIdx => {
+        const lvl = DEFAULT_LEVELS[stageIdx];
+        const chIdx = lvl && lvl.chapter !== undefined ? lvl.chapter : 0;
+        return chIdx === window.adminPathsSelectedChapter;
+      })
+      .sort((a, b) => a - b);
+      
+    if (clearedStageIndices.length === 0) {
+      grid.innerHTML = '<div style="grid-column: 1/-1; padding: 20px; text-align: center; color: rgba(255,255,255,0.4);">이 챕터에 클리어 기록이 없습니다.</div>';
+    } else {
+      clearedStageIndices.forEach(stageIdx => {
+        const rec = userRecords[stageIdx];
+        if (rec) {
+          const stageName = DEFAULT_LEVELS[stageIdx].name.split('. ')[1] || DEFAULT_LEVELS[stageIdx].name;
+          const retryCount = rec.retries || 1;
+          
+          const card = document.createElement('div');
+          card.className = 'stage-path-card';
+          card.style.cssText = 'background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 4px;';
+          card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold;">
+              <span style="color: #00e5ff;">${getLevelDisplayNumber(stageIdx)}</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="color: #ffea00; font-size: 0.85rem;">★ ${rec.stars}</span>
+                <button onclick="window.deleteStageRecord('${window.adminPathsSelectedUser}', ${stageIdx})" class="btn btn-danger" style="margin: 0; padding: 3px 8px; font-size: 0.7rem; background: #ff1744; border: none; cursor: pointer; border-radius: 4px; color: #fff; line-height: 1.2;" title="이 스테이지 기록 삭제">기록 삭제</button>
+              </div>
+            </div>
+            <div style="font-size: 0.75rem; color: rgba(255,255,255,0.6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${stageName}">
+              ${stageName}
+            </div>
+            <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem; margin-top: 2px;">
+              이동: <span style="color: #00e676; font-weight: bold;">${rec.moves}</span> | 시도: <span style="color: #ff9100; font-weight: bold;">${retryCount}회</span>${rec.clearTime !== undefined ? ` | 시간: <span style="color: #00e5ff; font-weight: bold;">${formatTime(rec.clearTime)}</span>` : ''}
+            </div>
+            <button onclick="window.startReplay('${window.adminPathsSelectedUser}', ${stageIdx}, '${rec.path}')" class="btn btn-secondary" style="margin-top: 6px; padding: 4px 8px; font-size: 0.75rem; width: 100%; border: none; background: rgba(0, 229, 255, 0.2); color: #fff; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 229, 255, 0.4)'" onmouseout="this.style.background='rgba(0, 229, 255, 0.2)'">▶ 재생</button>
+          `;
+          grid.appendChild(card);
+        }
+      });
+    }
+    
+    pathListDiv.appendChild(grid);
+    
+  } catch (e) {
+    console.error('Error fetching admin paths:', e);
+    pathListDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #ff1744;">데이터를 가져오는 중 오류가 발생했습니다.</div>';
   }
 }
 
@@ -3290,7 +4421,16 @@ async function deleteUserRecord(username) {
     
     if (putRes.ok) {
       alert(`${username} 모험가의 기록이 삭제되었습니다.`);
-      showLeaderboardModal();
+      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+      if (username === currentUser) {
+        DEFAULT_LEVELS.forEach((_, idx) => {
+          localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
+          localStorage.removeItem(`runic_dungeon_retry_count_${username}_${idx}`);
+          localStorage.removeItem(`runic_dungeon_play_time_${username}_${idx}`);
+        });
+        updateRecordHUD();
+      }
+      showAdminPathsModal();
     } else {
       alert('기록 삭제 중 오류가 발생했습니다. 다시 시도해 주세요.');
     }
@@ -3302,6 +4442,63 @@ async function deleteUserRecord(username) {
 
 window.deleteUserRecord = deleteUserRecord;
 
+async function deleteStageRecord(username, stageIdx) {
+  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 해당 모험가의 로컬 기록도 다음 로그인 시 초기화됩니다.`)) {
+    return;
+  }
+  
+  try {
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
+    let dbData = {};
+    if (res.ok) {
+      const obj = await res.json();
+      dbData = obj.data || {};
+    } else {
+      alert('기록을 불러오는 데 실패했습니다.');
+      return;
+    }
+    
+    if (dbData[username] && dbData[username][stageIdx]) {
+      delete dbData[username][stageIdx];
+    }
+    
+    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
+    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
+    const putRes = await fetch(proxiedPutUrl, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Edit-Key': DB_EDIT_KEY
+      },
+      body: JSON.stringify({
+        name: "RunicDungeonLeaderboard",
+        data: dbData
+      })
+    });
+    
+    if (putRes.ok) {
+      alert(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 기록이 삭제되었습니다.`);
+      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+      if (username === currentUser) {
+        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
+        localStorage.removeItem(`runic_dungeon_retry_count_${username}_${stageIdx}`);
+        localStorage.removeItem(`runic_dungeon_play_time_${username}_${stageIdx}`);
+        updateRecordHUD();
+      }
+      showAdminPathsModal();
+    } else {
+      alert('기록 삭제 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    }
+  } catch (e) {
+    console.error('Error deleting stage record:', e);
+    alert('서버 통신 중 오류가 발생했습니다.');
+  }
+}
+
+window.deleteStageRecord = deleteStageRecord;
+
 // Replay Playback Engine Functions
 window.startReplay = function(username, stageIdx, pathString) {
   if (window.isReplaying) return;
@@ -3312,9 +4509,24 @@ window.startReplay = function(username, stageIdx, pathString) {
   
   window.replayOriginalLevelIdx = currentLevelIdx;
   
-  // Close leaderboard modal
+  // Save source modal to restore later
   const leaderboardModal = document.getElementById('leaderboardModal');
+  const adminPathsModal = document.getElementById('adminPathsModal');
+  const adminUserStageOverlay = document.getElementById('adminUserStageOverlay');
+  if (leaderboardModal && !leaderboardModal.classList.contains('hidden')) {
+    window.replaySourceModal = 'leaderboardModal';
+  } else if (adminPathsModal && !adminPathsModal.classList.contains('hidden')) {
+    window.replaySourceModal = 'adminPathsModal';
+  } else if (adminUserStageOverlay && !adminUserStageOverlay.classList.contains('hidden')) {
+    window.replaySourceModal = 'adminUserStageOverlay';
+  } else {
+    window.replaySourceModal = null;
+  }
+  
+  // Close leaderboard, admin paths & custom overlays
   if (leaderboardModal) leaderboardModal.classList.add('hidden');
+  if (adminPathsModal) adminPathsModal.classList.add('hidden');
+  if (adminUserStageOverlay) adminUserStageOverlay.classList.add('hidden');
   
   window.isReplaying = true;
   window.replayPath = pathString.split('');
@@ -3331,7 +4543,7 @@ window.startReplay = function(username, stageIdx, pathString) {
   if (replayOverlay) replayOverlay.classList.remove('hidden');
   if (replayInfo) {
     const levelName = DEFAULT_LEVELS[stageIdx].name.split('. ')[1] || DEFAULT_LEVELS[stageIdx].name;
-    replayInfo.textContent = `${username} 모험가 - ${stageIdx + 1}층 (${levelName})`;
+    replayInfo.textContent = `${username} 모험가 - ${getLevelDisplayNumber(stageIdx)} (${levelName})`;
   }
   if (replayStepText) {
     replayStepText.textContent = `[0 / ${window.replayPath.length}]`;
@@ -3359,9 +4571,17 @@ window.stopReplay = function() {
     loadLevel(window.replayOriginalLevelIdx);
   }
   
-  // Re-open leaderboard modal
-  const leaderboardModal = document.getElementById('leaderboardModal');
-  if (leaderboardModal) leaderboardModal.classList.remove('hidden');
+  // Re-open active modal/overlay before replay
+  if (window.replaySourceModal === 'adminUserStageOverlay') {
+    document.getElementById('appContainer').classList.add('hidden');
+    document.getElementById('adminUserStageOverlay').classList.remove('hidden');
+  } else if (window.replaySourceModal === 'adminPathsModal') {
+    const adminPathsModal = document.getElementById('adminPathsModal');
+    if (adminPathsModal) adminPathsModal.classList.remove('hidden');
+  } else {
+    const leaderboardModal = document.getElementById('leaderboardModal');
+    if (leaderboardModal) leaderboardModal.classList.remove('hidden');
+  }
 };
 
 function executeReplayStep() {
@@ -3408,7 +4628,7 @@ function executeReplayStep() {
 
 function getUserIcon(username) {
   if (username === '엽이') {
-    return `<svg viewBox="0 0 36 36" width="18" height="18" style="vertical-align: middle; display: inline-block;">
+    return `<svg viewBox="0 0 36 36" width="1.2em" height="1.2em" style="vertical-align: middle; display: inline-block;">
       <defs>
         <linearGradient id="sliceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="#FFF9C4" />
@@ -3435,7 +4655,17 @@ function getUserIcon(username) {
 
 // Stage Selection Overlay Functions
 function showStageSelectMenu() {
+  document.getElementById('appContainer').classList.add('hidden');
   document.getElementById('stageSelectOverlay').classList.remove('hidden');
+  const btnLeaderboard = document.getElementById('btnStageSelectLeaderboard');
+  if (btnLeaderboard) {
+    if (currentChapterIdx === 0) {
+      btnLeaderboard.classList.add('hidden');
+    } else {
+      btnLeaderboard.classList.remove('hidden');
+      btnLeaderboard.setAttribute('data-tooltip', `챕터 순위표 : ${currentChapterIdx}장`);
+    }
+  }
   renderStageSelectGrid();
 }
 
@@ -3445,28 +4675,72 @@ function renderStageSelectGrid() {
   grid.innerHTML = '';
   
   DEFAULT_LEVELS.forEach((lvl, idx) => {
+    const levelChapter = lvl.chapter !== undefined ? lvl.chapter : 0;
+    if (levelChapter !== currentChapterIdx) return;
+
     const best = getBestRecord(idx);
     const card = document.createElement('div');
     card.className = 'stage-card';
+    if (lvl.locked) {
+      card.className = 'stage-card locked';
+    }
     
     const numDiv = document.createElement('div');
     numDiv.className = 'stage-num';
-    numDiv.textContent = `${idx + 1}층`;
+    numDiv.textContent = getLevelDisplayNumber(idx);
     
     const nameDiv = document.createElement('div');
     nameDiv.className = 'stage-name';
     nameDiv.textContent = lvl.name.split('. ')[1] || lvl.name;
     
     const starsDiv = document.createElement('div');
-    starsDiv.className = 'stage-stars' + (best && best.stars > 0 ? ' has-stars' : '');
-    starsDiv.textContent = best ? '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) : '☆☆☆';
+    if (lvl.locked) {
+      starsDiv.className = 'stage-stars';
+      starsDiv.textContent = '🔒';
+    } else {
+      starsDiv.className = 'stage-stars' + (best && best.stars > 0 ? ' has-stars' : '');
+      starsDiv.textContent = best ? '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) : '☆☆☆';
+    }
+    
+    const retriesDiv = document.createElement('div');
+    retriesDiv.className = 'stage-retries';
+    retriesDiv.style.fontSize = '0.65rem';
+    retriesDiv.style.color = 'rgba(255,255,255,0.5)';
+    retriesDiv.style.marginTop = '6px';
+    retriesDiv.style.fontFamily = 'var(--font-body)';
+    
+    if (!lvl.locked) {
+      const user = localStorage.getItem('runic_dungeon_user') || '';
+      const retryCount = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${user}_${idx}`), 10) || 0;
+      if (best && best.stars === 3) {
+        const finalRetries = best.retries || retryCount || 1;
+        const timeStr = best.clearTime !== undefined ? ` (${formatTime(best.clearTime)})` : '';
+        retriesDiv.innerHTML = `<span style="color: #00e676; font-weight: bold;">3성 달성:</span> ${finalRetries}회${timeStr}`;
+      } else {
+        const accumTime = parseInt(localStorage.getItem(`runic_dungeon_play_time_${user}_${idx}`), 10) || 0;
+        const accumSec = Math.round(accumTime / 1000);
+        const timeStr = accumSec > 0 ? ` (${formatTime(accumSec)})` : '';
+        retriesDiv.innerHTML = retryCount > 0 
+          ? `<span style="color: #ff9100; font-weight: bold;">시도 중:</span> ${retryCount}회${timeStr}` 
+          : `<span style="color: rgba(255,255,255,0.35);">시도 없음</span>`;
+      }
+    } else {
+      retriesDiv.textContent = '-';
+    }
     
     card.appendChild(numDiv);
     card.appendChild(nameDiv);
     card.appendChild(starsDiv);
+    card.appendChild(retriesDiv);
     
     card.addEventListener('click', () => {
+      if (lvl.locked) {
+        sound.playFail();
+        shakeCardElement(card);
+        return;
+      }
       document.getElementById('stageSelectOverlay').classList.add('hidden');
+      document.getElementById('appContainer').classList.remove('hidden');
       sound.init();
       loadLevel(idx);
       document.getElementById('levelSelect').value = idx;
@@ -3477,8 +4751,1267 @@ function renderStageSelectGrid() {
   });
 }
 
+function shakeCardElement(card) {
+  card.classList.add('shake-anim');
+  setTimeout(() => {
+    card.classList.remove('shake-anim');
+  }, 400);
+}
+
 // Chapter Selection Overlay Functions
+window.viewChapterLeaderboard = function(event, chapterIdx) {
+  if (event) {
+    event.stopPropagation(); // Prevent entering the chapter stage select screen!
+  }
+  showLeaderboardModal(chapterIdx);
+};
+
+// ==========================================================================
+// Map Editor & Custom Modes Core Logic
+// ==========================================================================
+
+async function fetchCloudData() {
+  const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+  const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+  const res = await fetch(proxiedUrl);
+  if (res.ok) {
+    const obj = await res.json();
+    return obj.data || {};
+  }
+  throw new Error("Failed to fetch cloud database: " + res.status);
+}
+
+async function saveCloudData(dbData) {
+  const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
+  const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
+  const putRes = await fetch(proxiedPutUrl, {
+    method: 'PATCH',
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-Edit-Key': DB_EDIT_KEY
+    },
+    body: JSON.stringify({
+      name: "RunicDungeonLeaderboard",
+      data: dbData
+    })
+  });
+  if (!putRes.ok) {
+    throw new Error("Failed to save cloud database: " + putRes.status);
+  }
+}
+
+function loadLocalDrafts(username) {
+  const data = localStorage.getItem('runic_dungeon_drafts_' + username);
+  return data ? JSON.parse(data) : [];
+}
+
+function saveLocalDrafts(username, drafts) {
+  localStorage.setItem('runic_dungeon_drafts_' + username, JSON.stringify(drafts));
+}
+
+async function syncLocalDraftsWithCloud() {
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  let drafts = loadLocalDrafts(username);
+  if (drafts.length === 0) return;
+
+  try {
+    const dbData = await fetchCloudData();
+    if (!dbData) return;
+    const customMaps = dbData["custom_maps"] || {};
+    let updated = false;
+
+    drafts.forEach(map => {
+      const dbMap = customMaps[map.id];
+      if (dbMap) {
+        if (!map.published || !map.verified) {
+          map.published = true;
+          map.verified = true;
+          updated = true;
+        }
+      } else {
+        if (map.published) {
+          map.published = false;
+          map.verified = map.optimalAP !== null;
+          updated = true;
+        }
+      }
+    });
+
+    if (updated) {
+      saveLocalDrafts(username, drafts);
+      renderCustomMapList();
+    }
+  } catch (e) {
+    console.error("Failed to sync drafts with cloud:", e);
+  }
+}
+
+
+function showModeSelectMenu() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('chapterSelectOverlay').classList.add('hidden');
+  document.getElementById('stageSelectOverlay').classList.add('hidden');
+  document.getElementById('customMapMenuOverlay').classList.add('hidden');
+  document.getElementById('customMapListOverlay').classList.add('hidden');
+  document.getElementById('mapEditorOverlay').classList.add('hidden');
+  document.getElementById('friendMapsOverlay').classList.add('hidden');
+  document.getElementById('adminUserSelectOverlay').classList.add('hidden');
+  document.getElementById('adminUserStageOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.add('hidden');
+  
+  document.getElementById('modeSelectOverlay').classList.remove('hidden');
+
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  const adminCard = document.getElementById('btnModeAdminPaths');
+  const modeGrid = document.querySelector('.mode-grid');
+  const selectBox = document.querySelector('.mode-select-box');
+  if (adminCard) {
+    if (username === '관리자') {
+      adminCard.classList.remove('hidden');
+      if (modeGrid) modeGrid.classList.add('admin-grid');
+      if (selectBox) selectBox.classList.add('admin-layout');
+    } else {
+      adminCard.classList.add('hidden');
+      if (modeGrid) modeGrid.classList.remove('admin-grid');
+      if (selectBox) selectBox.classList.remove('admin-layout');
+    }
+  }
+}
+
+function showCustomMapMenu() {
+  document.getElementById('modeSelectOverlay').classList.add('hidden');
+  document.getElementById('customMapListOverlay').classList.add('hidden');
+  document.getElementById('mapEditorOverlay').classList.add('hidden');
+  document.getElementById('friendMapsOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.add('hidden');
+  
+  document.getElementById('customMapMenuOverlay').classList.remove('hidden');
+}
+
+function showCustomMapList() {
+  document.getElementById('customMapMenuOverlay').classList.add('hidden');
+  document.getElementById('mapEditorOverlay').classList.add('hidden');
+  
+  document.getElementById('customMapListOverlay').classList.remove('hidden');
+  renderCustomMapList();
+  syncLocalDraftsWithCloud();
+}
+
+function getActiveMapSizeString(map) {
+  let minX = map.width;
+  let maxX = 0;
+  let minY = map.height;
+  let maxY = 0;
+  let hasActiveElements = false;
+
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      if (map.grid[y][x] !== ' ') {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+        hasActiveElements = true;
+      }
+    }
+  }
+
+  if (map.entities) {
+    map.entities.forEach(ent => {
+      minX = Math.min(minX, ent.x);
+      maxX = Math.max(maxX, ent.x);
+      minY = Math.min(minY, ent.y);
+      maxY = Math.max(maxY, ent.y);
+      hasActiveElements = true;
+    });
+  }
+
+  if (hasActiveElements) {
+    const activeW = maxX - minX + 1;
+    const activeH = maxY - minY + 1;
+    return `${activeW}x${activeH}`;
+  }
+  return `${map.width}x${map.height}`;
+}
+
+function renderCustomMapList() {
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  const drafts = loadLocalDrafts(username);
+  const grid = document.getElementById('customMapGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  if (drafts.length === 0) {
+    grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 0.95rem; font-family: var(--font-body);">제작한 맵이 없습니다. 새 맵을 만들어보세요!</div>';
+    return;
+  }
+
+  drafts.forEach((map) => {
+    const card = document.createElement('div');
+    card.className = 'stage-card';
+
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'stage-num';
+    statusDiv.style.fontSize = '1.05rem';
+    statusDiv.style.margin = '4px 0';
+    if (map.published) {
+      statusDiv.innerHTML = `<span style="color: #00e676; text-shadow: 0 0 10px rgba(0, 230, 118, 0.4);">🚀 배포 완료</span>`;
+    } else {
+      statusDiv.innerHTML = `<span style="color: #ff9100; text-shadow: 0 0 10px rgba(255, 145, 0, 0.4);">💾 임시 저장</span>`;
+    }
+
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'stage-name';
+    nameDiv.textContent = map.name;
+
+    const sizeDiv = document.createElement('div');
+    sizeDiv.className = 'stage-stars';
+    sizeDiv.style.fontSize = '0.85rem';
+    sizeDiv.style.color = 'var(--color-primary)';
+    sizeDiv.textContent = `📏 ${getActiveMapSizeString(map)}`;
+
+    const apDiv = document.createElement('div');
+    apDiv.className = 'stage-retries';
+    apDiv.style.fontSize = '0.7rem';
+    apDiv.style.color = 'rgba(255, 255, 255, 0.7)';
+    apDiv.style.marginTop = '4px';
+    apDiv.style.fontFamily = 'var(--font-body)';
+    
+    const apText = map.optimalAP !== null && map.optimalAP !== undefined ? `${map.optimalAP} AP` : '미검증';
+    apDiv.innerHTML = `<span style="color: #00e5ff; font-weight: bold;">최적:</span> ${apText}`;
+
+    // Action buttons container
+    const actionsDiv = document.createElement('div');
+    actionsDiv.style.display = 'flex';
+    actionsDiv.style.gap = '8px';
+    actionsDiv.style.marginTop = '10px';
+    actionsDiv.style.width = '100%';
+    actionsDiv.style.justifyContent = 'center';
+    actionsDiv.style.zIndex = '10';
+
+    const btnDelete = document.createElement('button');
+    btnDelete.className = 'btn btn-danger';
+    btnDelete.style.flex = '1';
+    btnDelete.style.padding = '6px 0';
+    btnDelete.style.fontSize = '0.75rem';
+    btnDelete.style.margin = '0';
+    btnDelete.textContent = '🗑️ 삭제';
+    btnDelete.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await deleteLocalMapDraft(map.id);
+    });
+
+    const btnRight = document.createElement('button');
+    btnRight.style.flex = '1';
+    btnRight.style.padding = '6px 0';
+    btnRight.style.fontSize = '0.75rem';
+    btnRight.style.margin = '0';
+
+    if (map.published) {
+      btnRight.className = 'btn';
+      btnRight.style.backgroundColor = '#ff9100';
+      btnRight.style.color = '#fff';
+      btnRight.textContent = '🚫 배포 취소';
+      btnRight.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await unpublishEditorMap(map.id);
+      });
+    } else {
+      btnRight.className = 'btn btn-primary';
+      btnRight.textContent = '✏️ 편집';
+      btnRight.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEditorForMap(map.id);
+      });
+    }
+
+    actionsDiv.appendChild(btnDelete);
+    actionsDiv.appendChild(btnRight);
+
+    card.appendChild(statusDiv);
+    card.appendChild(nameDiv);
+    card.appendChild(sizeDiv);
+    card.appendChild(apDiv);
+    card.appendChild(actionsDiv);
+
+    card.addEventListener('click', () => {
+      if (map.published) {
+        alert("배포된 퍼즐은 직접 수정할 수 없습니다. 수정을 원하시면 먼저 '배포 취소'를 눌러주세요!");
+      } else {
+        openEditorForMap(map.id);
+      }
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+async function unpublishEditorMap(mapId) {
+  if (!confirm("정말로 이 맵의 배포를 취소하시겠습니까?\n서버에서 맵이 내려가지만, 제작 목록에는 유지됩니다.")) return;
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  
+  try {
+    const dbData = await fetchCloudData();
+    if (dbData && dbData["custom_maps"] && dbData["custom_maps"][mapId]) {
+      delete dbData["custom_maps"][mapId];
+      await saveCloudData(dbData);
+      console.log("Map unpublished from cloud database.");
+    }
+  } catch (err) {
+    console.error("Failed to unpublish map from cloud database:", err);
+    alert("서버 연결 실패로 배포 취소에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+    return;
+  }
+
+  let drafts = loadLocalDrafts(username);
+  const idx = drafts.findIndex(m => m.id === mapId);
+  if (idx !== -1) {
+    drafts[idx].published = false;
+    saveLocalDrafts(username, drafts);
+  }
+
+  alert("배포가 취소되었습니다. 이제 임시 저장 상태로 수정할 수 있습니다.");
+  renderCustomMapList();
+}
+
+async function deleteLocalMapDraft(mapId) {
+  if (!confirm("정말로 이 맵을 삭제하시겠습니까?")) return;
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  let drafts = loadLocalDrafts(username);
+  drafts = drafts.filter(m => m.id !== mapId);
+  saveLocalDrafts(username, drafts);
+  renderCustomMapList();
+
+  try {
+    const dbData = await fetchCloudData();
+    if (dbData && dbData["custom_maps"] && dbData["custom_maps"][mapId]) {
+      delete dbData["custom_maps"][mapId];
+      await saveCloudData(dbData);
+      console.log("Cloud database synchronized. Map deleted.");
+    }
+  } catch (err) {
+    console.error("Failed to delete map from cloud database:", err);
+  }
+}
+
+function openEditorForMap(mapId) {
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  const drafts = loadLocalDrafts(username);
+  const map = drafts.find(m => m.id === mapId);
+  if (!map) return;
+
+  currentEditingMapId = mapId;
+  editorGridWidth = map.width || 15;
+  editorGridHeight = map.height || 15;
+  editorMapName = map.name;
+  editorMaxAP = map.maxAP || 50;
+
+  // Auto-migrate and expand smaller grids (e.g. 10x10) to 15x15
+  if (editorGridWidth < 15 || editorGridHeight < 15) {
+    let newGrid = Array(15).fill(null).map(() => Array(15).fill(' '));
+    for (let y = 0; y < Math.min(editorGridHeight, 15); y++) {
+      for (let x = 0; x < Math.min(editorGridWidth, 15); x++) {
+        newGrid[y][x] = map.grid[y][x];
+      }
+    }
+    editorGrid = newGrid;
+    editorGridWidth = 15;
+    editorGridHeight = 15;
+  } else {
+    editorGrid = map.grid.map(row => [...row]);
+  }
+  editorEntities = map.entities.map(e => ({ ...e }));
+  editorConnections = map.connections ? map.connections.map(c => ({
+    switch: { ...c.switch },
+    door: { ...c.door }
+  })) : [];
+  editorPortalConnections = map.portalConnections ? map.portalConnections.map(c => ({
+    p1: { ...c.p1 },
+    p2: { ...c.p2 }
+  })) : [];
+  editorVerified = map.verified || map.published || false;
+  editorOptimalAP = map.optimalAP || null;
+  editorOptimalMoves = map.optimalMoves || null;
+  editorOptimalPath = map.optimalPath || null;
+  editorSelectedTool = 'W';
+  editorLinkStart = null;
+
+  document.getElementById('editorMapNameInput').value = editorMapName;
+  document.getElementById('editorMapMaxApInput').value = editorVerified ? editorMaxAP : "최적 클리어로 갱신";
+  document.getElementById('editorLinkStatus').textContent = "선택 해제됨";
+
+  const paletteBtns = document.querySelectorAll('#editorPalette .palette-item');
+  paletteBtns.forEach(btn => btn.classList.remove('active'));
+  const defaultBtn = document.querySelector(`#editorPalette .palette-item[data-type="W"]`);
+  if (defaultBtn) defaultBtn.classList.add('active');
+
+  document.getElementById('btnEditorPublish').disabled = !editorVerified;
+
+  document.getElementById('customMapListOverlay').classList.add('hidden');
+  document.getElementById('mapEditorOverlay').classList.remove('hidden');
+
+  isEditorMode = true;
+  renderEditorGrid();
+}
+
+function createNewCustomMap() {
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  const drafts = loadLocalDrafts(username);
+  
+  const newMapId = "map_" + Date.now();
+  const newMap = {
+    id: newMapId,
+    name: "새로운 퍼즐",
+    width: 15,
+    height: 15,
+    maxAP: 50,
+    grid: Array(15).fill(null).map(() => Array(15).fill(' ')),
+    entities: [],
+    connections: [],
+    portalConnections: [],
+    published: false,
+    verified: false,
+    optimalAP: null,
+    optimalMoves: null,
+    optimalPath: null
+  };
+  
+  drafts.push(newMap);
+  saveLocalDrafts(username, drafts);
+  
+  openEditorForMap(newMapId);
+}
+
+function renderEditorGrid() {
+  const gridEl = document.getElementById('editorGrid');
+  gridEl.innerHTML = '';
+  gridEl.style.gridTemplateColumns = `repeat(${editorGridWidth}, 40px)`;
+  gridEl.style.gridTemplateRows = `repeat(${editorGridHeight}, 40px)`;
+
+  for (let y = 0; y < editorGridHeight; y++) {
+    for (let x = 0; x < editorGridWidth; x++) {
+      const cell = document.createElement('div');
+      cell.className = 'editor-cell';
+      cell.dataset.x = x;
+      cell.dataset.y = y;
+
+      const tileType = editorGrid[y][x];
+      let bgClass = 'cell-wall';
+      switch (tileType) {
+        case 'W': bgClass = 'cell-wall'; break;
+        case '.': bgClass = 'cell-floor'; break;
+        case 'I': bgClass = 'cell-ice'; break;
+        case 'H': bgClass = 'cell-hole'; break;
+        case 'G': bgClass = 'cell-goal'; break;
+        case 'S': bgClass = 'cell-switch-temp'; break;
+        case 'K': bgClass = 'cell-switch-perm'; break;
+        case 'D': bgClass = 'cell-door'; break;
+        case 'T': bgClass = 'cell-spikes'; break;
+        case 'C': bgClass = 'cell-crumb1'; break;
+        case 'X': bgClass = 'cell-crumb2'; break;
+        case 'P': bgClass = 'cell-portal'; break;
+        case '^': case 'v': case '<': case '>': bgClass = 'cell-oneway'; break;
+        case ' ': bgClass = 'cell-empty'; break;
+      }
+      cell.classList.add(bgClass);
+
+      const connIdx = editorConnections.findIndex(c => 
+        (c.switch.x === x && c.switch.y === y) || (c.door.x === x && c.door.y === y)
+      );
+      if (connIdx !== -1) {
+        const badgeColors = ['#ffea00', '#00b0ff', '#d500f9', '#00e676'];
+        const color = badgeColors[connIdx % badgeColors.length];
+        cell.style.borderColor = color;
+        cell.style.boxShadow = `0 0 8px ${color}, inset 0 0 8px ${color}`;
+
+        const badge = document.createElement('span');
+        badge.className = 'conn-badge';
+        badge.textContent = String.fromCharCode(65 + connIdx);
+        cell.appendChild(badge);
+      }
+
+      if (tileType === 'P') {
+        const portalConnIdx = editorPortalConnections.findIndex(c => 
+          (c.p1.x === x && c.p1.y === y) || (c.p2.x === x && c.p2.y === y)
+        );
+        if (portalConnIdx !== -1) {
+          const portalColors = ['#00e676', '#ffea00', '#00b0ff', '#ff1744'];
+          const color = portalColors[portalConnIdx % portalColors.length];
+          cell.style.borderColor = color;
+          cell.style.color = color;
+          cell.style.boxShadow = `0 0 10px ${color}, inset 0 0 5px ${color}`;
+
+          const badge = document.createElement('span');
+          badge.className = 'conn-badge';
+          badge.textContent = portalConnIdx + 1;
+          badge.style.background = color;
+          badge.style.color = '#000';
+          cell.appendChild(badge);
+        } else {
+          cell.style.borderColor = '#9e9e9e';
+          cell.style.color = '#9e9e9e';
+          cell.style.boxShadow = 'none';
+        }
+      }
+
+      // Check if this cell is currently selected as the link starting point
+      if (editorLinkStart && editorLinkStart.x === x && editorLinkStart.y === y) {
+        cell.classList.add('link-start-selected');
+      }
+
+      const entity = editorEntities.find(e => e.x === x && e.y === y);
+      if (entity) {
+        if (entity.type === 'player') {
+          cell.textContent = '🤖';
+        } else if (entity.type === 'box') {
+          cell.textContent = '📦';
+        }
+      } else {
+        switch (tileType) {
+          case 'W': cell.textContent = '🧱'; break;
+          case '.': cell.textContent = ''; break;
+          case ' ': cell.textContent = ''; break;
+          case 'I': cell.textContent = '❄️'; break;
+          case 'H': cell.textContent = '🕳️'; break;
+          case 'G': cell.textContent = '🌟'; break;
+          case 'S': cell.textContent = '🔴'; break;
+          case 'K': cell.textContent = '🟡'; break;
+          case 'D': cell.textContent = '🔒'; break;
+          case 'T': cell.textContent = '🔺'; break;
+          case 'C': cell.textContent = '1'; break;
+          case 'X': cell.textContent = '2'; break;
+          case 'P': cell.textContent = '▲'; break;
+          case '^': cell.textContent = '⬆️'; break;
+          case 'v': cell.textContent = '⬇️'; break;
+          case '<': cell.textContent = '⬅️'; break;
+          case '>': cell.textContent = '➡️'; break;
+        }
+      }
+
+      cell.addEventListener('mousedown', (e) => {
+        window.isMouseDown = true;
+        handleEditorCellClick(x, y);
+      });
+
+      cell.addEventListener('mouseenter', () => {
+        if (window.isMouseDown && editorSelectedTool !== 'link') {
+          handleEditorCellClick(x, y);
+        }
+      });
+
+      gridEl.appendChild(cell);
+    }
+  }
+  updateEditorConnectionsList();
+}
+
+function updateEditorConnectionsList() {
+  const listEl = document.getElementById('editorConnectionsList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  if (editorConnections.length === 0 && editorPortalConnections.length === 0) {
+    listEl.innerHTML = '<div style="color: #666; text-align: center; font-style: italic; margin-top: 10px;">연결된 장치 없음</div>';
+    return;
+  }
+
+  // Render switch-door connections
+  editorConnections.forEach((conn, index) => {
+    const label = String.fromCharCode(65 + index); // 'A', 'B', 'C', ...
+    const badgeColors = ['#ffea00', '#00b0ff', '#d500f9', '#00e676'];
+    const color = badgeColors[index % badgeColors.length];
+
+    const item = document.createElement('div');
+    item.style.display = 'flex';
+    item.style.justifyContent = 'space-between';
+    item.style.alignItems = 'center';
+    item.style.padding = '4px 6px';
+    item.style.background = 'rgba(255, 255, 255, 0.03)';
+    item.style.borderLeft = `3px solid ${color}`;
+    item.style.borderRadius = '2px';
+    item.style.fontSize = '0.72rem';
+    item.style.marginBottom = '2px';
+    
+    const text = document.createElement('span');
+    text.innerHTML = `<b style="color: ${color}">${label}</b>: 스위치(${conn.switch.x},${conn.switch.y}) ➔ 문(${conn.door.x},${conn.door.y})`;
+    item.appendChild(text);
+
+    // delBtn
+    const delBtn = document.createElement('span');
+    delBtn.innerHTML = '❌';
+    delBtn.style.cursor = 'pointer';
+    delBtn.style.fontSize = '0.65rem';
+    delBtn.style.opacity = '0.6';
+    delBtn.style.marginLeft = '4px';
+    delBtn.addEventListener('mouseenter', () => delBtn.style.opacity = '1');
+    delBtn.addEventListener('mouseleave', () => delBtn.style.opacity = '0.6');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeConnectionAt(conn.switch.x, conn.switch.y);
+      invalidateEditorVerification();
+      renderEditorGrid();
+    });
+    item.appendChild(delBtn);
+
+    listEl.appendChild(item);
+  });
+
+  // Render portal connections
+  editorPortalConnections.forEach((conn, index) => {
+    const portalColors = ['#00e676', '#ffea00', '#00b0ff', '#ff1744']; // Green, Yellow, Blue, Red
+    const color = portalColors[index % portalColors.length];
+
+    const item = document.createElement('div');
+    item.style.display = 'flex';
+    item.style.justifyContent = 'space-between';
+    item.style.alignItems = 'center';
+    item.style.padding = '4px 6px';
+    item.style.background = 'rgba(255, 255, 255, 0.03)';
+    item.style.borderLeft = `3px solid ${color}`;
+    item.style.borderRadius = '2px';
+    item.style.fontSize = '0.72rem';
+    item.style.marginBottom = '2px';
+    
+    const text = document.createElement('span');
+    text.innerHTML = `<b style="color: ${color}">포탈 짝 ${index + 1}</b>: (${conn.p1.x},${conn.p1.y}) ⇄ (${conn.p2.x},${conn.p2.y})`;
+    item.appendChild(text);
+
+    // delBtn
+    const delBtn = document.createElement('span');
+    delBtn.innerHTML = '❌';
+    delBtn.style.cursor = 'pointer';
+    delBtn.style.fontSize = '0.65rem';
+    delBtn.style.opacity = '0.6';
+    delBtn.style.marginLeft = '4px';
+    delBtn.addEventListener('mouseenter', () => delBtn.style.opacity = '1');
+    delBtn.addEventListener('mouseleave', () => delBtn.style.opacity = '0.6');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removePortalConnectionAt(conn.p1.x, conn.p1.y);
+      invalidateEditorVerification();
+      renderEditorGrid();
+    });
+    item.appendChild(delBtn);
+
+    listEl.appendChild(item);
+  });
+}
+
+function removePortalConnectionAt(x, y) {
+  editorPortalConnections = editorPortalConnections.filter(c => 
+    !(c.p1.x === x && c.p1.y === y || c.p2.x === x && c.p2.y === y)
+  );
+}
+
+function removeConnectionAt(x, y) {
+  editorConnections = editorConnections.filter(c => 
+    !(c.switch.x === x && c.switch.y === y || c.door.x === x && c.door.y === y)
+  );
+  removePortalConnectionAt(x, y);
+}
+
+function handleEditorCellClick(x, y) {
+  const currentTile = editorGrid[y][x];
+
+  if (editorSelectedTool === 'link') {
+    const statusEl = document.getElementById('editorLinkStatus');
+    if (!editorLinkStart) {
+      // Step 1: Select either Switch, Door, or Portal
+      if (currentTile !== 'S' && currentTile !== 'K' && currentTile !== 'D' && currentTile !== 'P') {
+        window.isMouseDown = false;
+        alert("첫 번째 클릭은 스위치(🔴/🟡), 잠긴 문(🔒) 또는 포탈(P)을 선택해야 합니다!");
+        return;
+      }
+      editorLinkStart = { x, y, type: currentTile };
+      if (currentTile === 'S' || currentTile === 'K') {
+        statusEl.textContent = `${currentTile === 'S' ? '임시 스위치' : '지속 스위치'}(${x},${y}) 선택됨. 연결할 문(🔒)을 클릭하세요.`;
+      } else if (currentTile === 'D') {
+        statusEl.textContent = `잠긴 문(${x},${y}) 선택됨. 연결할 스위치(🔴/🟡)를 클릭하세요.`;
+      } else {
+        statusEl.textContent = `포탈(${x},${y}) 선택됨. 연결할 반대편 포탈(P)을 클릭하세요.`;
+      }
+      renderEditorGrid();
+    } else {
+      // Step 2: Select matching opposite type or handle portals
+      if (x === editorLinkStart.x && y === editorLinkStart.y) {
+        window.isMouseDown = false;
+        alert("자기 자신과 연결할 수 없습니다!");
+        return;
+      }
+
+      // If portal selection flow
+      if (editorLinkStart.type === 'P') {
+        if (currentTile !== 'P') {
+          window.isMouseDown = false;
+          alert("포탈은 다른 포탈(P)과만 연결할 수 있습니다!");
+          return;
+        }
+
+        // Remove any existing portal connections for either portal
+        removePortalConnectionAt(editorLinkStart.x, editorLinkStart.y);
+        removePortalConnectionAt(x, y);
+
+        // Link them
+        editorPortalConnections.push({
+          p1: { x: editorLinkStart.x, y: editorLinkStart.y },
+          p2: { x, y }
+        });
+
+        editorLinkStart = null;
+        statusEl.textContent = "포탈 연결 성공!";
+        setTimeout(() => {
+          if (editorSelectedTool === 'link') {
+            statusEl.textContent = "연결할 스위치(🔴/🟡), 잠긴 문(🔒) 또는 포탈(P)을 클릭하세요.";
+          }
+        }, 1500);
+
+        invalidateEditorVerification();
+        renderEditorGrid();
+        return;
+      }
+
+      // If non-portal (switch/door) flow but current is portal
+      if (currentTile === 'P') {
+        window.isMouseDown = false;
+        alert("스위치/문은 포탈과 연결할 수 없습니다!");
+        return;
+      }
+
+      const isStartSwitch = (editorLinkStart.type === 'S' || editorLinkStart.type === 'K');
+      const isCurrentSwitch = (currentTile === 'S' || currentTile === 'K');
+      
+      // If clicking same category again, update first selection instead of erroring
+      if (isStartSwitch && isCurrentSwitch) {
+        editorLinkStart = { x, y, type: currentTile };
+        statusEl.textContent = `${currentTile === 'S' ? '임시 스위치' : '지속 스위치'}(${x},${y}) 선택됨. 연결할 문(🔒)을 클릭하세요.`;
+        renderEditorGrid();
+        return;
+      }
+      if (!isStartSwitch && currentTile === 'D') {
+        editorLinkStart = { x, y, type: currentTile };
+        statusEl.textContent = `잠긴 문(${x},${y}) 선택됨. 연결할 스위치(🔴/🟡)를 클릭하세요.`;
+        renderEditorGrid();
+        return;
+      }
+
+      // Check compatibility
+      if (isStartSwitch && currentTile !== 'D') {
+        window.isMouseDown = false;
+        alert("스위치와 연결하려면 잠긴 문(🔒)을 클릭해야 합니다!");
+        return;
+      }
+      if (!isStartSwitch && !isCurrentSwitch) {
+        window.isMouseDown = false;
+        alert("잠긴 문과 연결하려면 스위치(🔴/🟡)를 클릭해야 합니다!");
+        return;
+      }
+
+      // Determine Switch and Door objects
+      let switchObj, doorObj;
+      if (isStartSwitch) {
+        switchObj = { x: editorLinkStart.x, y: editorLinkStart.y };
+        doorObj = { x, y };
+      } else {
+        switchObj = { x, y };
+        doorObj = { x: editorLinkStart.x, y: editorLinkStart.y };
+      }
+
+      // Remove any existing connection for this switch or this door to keep 1-to-1
+      removeConnectionAt(switchObj.x, switchObj.y);
+      removeConnectionAt(doorObj.x, doorObj.y);
+
+      // Link them
+      editorConnections.push({
+        switch: switchObj,
+        door: doorObj
+      });
+
+      editorLinkStart = null;
+      statusEl.textContent = "연결 성공!";
+      setTimeout(() => {
+        if (editorSelectedTool === 'link') {
+          statusEl.textContent = "연결할 스위치(🔴/🟡), 잠긴 문(🔒) 또는 포탈(P)을 클릭하세요.";
+        }
+      }, 1500);
+
+      invalidateEditorVerification();
+      renderEditorGrid();
+    }
+    return;
+  }
+
+  // Handle placing individual switch or door tiles
+  if (editorSelectedTool === 'S' || editorSelectedTool === 'K' || editorSelectedTool === 'D') {
+    if (currentTile === 'W' || currentTile === ' ') {
+      window.isMouseDown = false;
+      alert("바닥 타일을 먼저 설치해야 합니다!");
+      return;
+    }
+    editorGrid[y][x] = editorSelectedTool;
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    removeConnectionAt(x, y);
+    invalidateEditorVerification();
+    renderEditorGrid();
+    return;
+  }
+
+  if (editorSelectedTool === 'empty') {
+    editorGrid[y][x] = ' ';
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    removeConnectionAt(x, y);
+    invalidateEditorVerification();
+    renderEditorGrid();
+  } else if (editorSelectedTool === 'W') {
+    editorGrid[y][x] = 'W';
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    removeConnectionAt(x, y);
+    invalidateEditorVerification();
+    renderEditorGrid();
+  } else if (editorSelectedTool === '.') {
+    editorGrid[y][x] = '.';
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    removeConnectionAt(x, y);
+    invalidateEditorVerification();
+    renderEditorGrid();
+  } else if (['I', 'H', 'G', 'T', 'C', 'X', 'P', '^', 'v', '<', '>'].includes(editorSelectedTool)) {
+    if (currentTile === 'W' || currentTile === ' ') {
+      window.isMouseDown = false;
+      alert("바닥 타일을 먼저 설치해야 합니다!");
+      return;
+    }
+    editorGrid[y][x] = editorSelectedTool;
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    removeConnectionAt(x, y);
+    invalidateEditorVerification();
+    renderEditorGrid();
+  } else if (editorSelectedTool === 'player') {
+    if (currentTile === 'W' || currentTile === ' ') {
+      window.isMouseDown = false;
+      alert("바닥 타일을 먼저 설치해야 합니다!");
+      return;
+    }
+    editorEntities = editorEntities.filter(e => e.type !== 'player');
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    editorEntities.push({ type: 'player', x, y });
+    invalidateEditorVerification();
+    renderEditorGrid();
+  } else if (editorSelectedTool === 'box') {
+    if (currentTile === 'W' || currentTile === ' ') {
+      window.isMouseDown = false;
+      alert("바닥 타일을 먼저 설치해야 합니다!");
+      return;
+    }
+    editorEntities = editorEntities.filter(e => !(e.x === x && e.y === y));
+    editorEntities.push({ type: 'box', x, y });
+    invalidateEditorVerification();
+    renderEditorGrid();
+  }
+}
+
+function invalidateEditorVerification() {
+  editorVerified = false;
+  const maxApInput = document.getElementById('editorMapMaxApInput');
+  if (maxApInput) {
+    maxApInput.value = "최적 클리어로 갱신";
+  }
+  const publishBtn = document.getElementById('btnEditorPublish');
+  if (publishBtn) {
+    publishBtn.disabled = true;
+  }
+}
+
+window.addEventListener('mouseup', () => {
+  window.isMouseDown = false;
+});
+
+function startEditorTestPlay() {
+  let goalCount = 0;
+  for (let y = 0; y < editorGridHeight; y++) {
+    for (let x = 0; x < editorGridWidth; x++) {
+      if (editorGrid[y][x] === 'G') goalCount++;
+    }
+  }
+
+  const playerCount = editorEntities.filter(e => e.type === 'player').length;
+  const boxCount = editorEntities.filter(e => e.type === 'box').length;
+
+  if (playerCount !== 1) {
+    alert("플레이어(🤖)가 반드시 1개 있어야 합니다!");
+    return;
+  }
+  if (goalCount === 0) {
+    alert("목표 지점(🌟)이 최소 1개 있어야 합니다!");
+    return;
+  }
+  if (boxCount === 0) {
+    alert("상자(📦)가 최소 1개 있어야 합니다!");
+    return;
+  }
+
+  // Validate that all portals (P) are connected
+  let portalCoords = [];
+  for (let y = 0; y < editorGridHeight; y++) {
+    for (let x = 0; x < editorGridWidth; x++) {
+      if (editorGrid[y][x] === 'P') {
+        portalCoords.push({ x, y });
+      }
+    }
+  }
+  for (const portal of portalCoords) {
+    const isLinked = editorPortalConnections.some(c => 
+      (c.p1.x === portal.x && c.p1.y === portal.y) || (c.p2.x === portal.x && c.p2.y === portal.y)
+    );
+    if (!isLinked) {
+      alert(`연결되지 않은 포탈(P)이 있습니다! (${portal.x}, ${portal.y}) 위치의 포탈을 다른 포탈과 연결해 주세요.`);
+      return;
+    }
+  }
+
+  editorMapName = document.getElementById('editorMapNameInput').value.trim() || "새로운 퍼즐";
+  if (!editorVerified) {
+    editorMaxAP = 99;
+  } else {
+    editorMaxAP = parseInt(document.getElementById('editorMapMaxApInput').value, 10) || 99;
+  }
+
+  const customMapData = {
+    name: editorMapName,
+    width: editorGridWidth,
+    height: editorGridHeight,
+    maxAP: editorMaxAP,
+    grid: editorGrid.map(row => [...row]),
+    entities: editorEntities.map(e => ({ ...e })),
+    connections: editorConnections.map(c => ({
+      switch: { ...c.switch },
+      door: { ...c.door }
+    }))
+  };
+
+  window.customMapMode = 'editor';
+  isEditorTesting = true;
+  isEditorMode = false;
+  
+  document.getElementById('appContainer').classList.add('testing-mode');
+  document.getElementById('mapEditorOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.remove('hidden');
+
+  document.getElementById('levelSelect').innerHTML = `<option value="-1">🛠️ 테스트 맵</option>`;
+  document.getElementById('levelSelect').value = "-1";
+  document.getElementById('levelSelect').disabled = true;
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn) {
+    playBackBtn.innerHTML = '<span class="icon">🛠️</span> <span class="text">에디터로 돌아가기</span>';
+    playBackBtn.setAttribute('data-tooltip', '에디터 화면으로 돌아가기');
+  }
+
+  sound.init();
+  loadLevel(null, customMapData);
+  canvas.focus();
+}
+
+function saveEditorDraftSilent() {
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  let drafts = loadLocalDrafts(username);
+  
+  editorMapName = document.getElementById('editorMapNameInput').value.trim() || "새로운 퍼즐";
+  const parsedMaxAp = parseInt(document.getElementById('editorMapMaxApInput').value, 10);
+  editorMaxAP = isNaN(parsedMaxAp) ? (editorMaxAP || 50) : parsedMaxAp;
+
+  const idx = drafts.findIndex(m => m.id === currentEditingMapId);
+  if (idx !== -1) {
+    drafts[idx].name = editorMapName;
+    drafts[idx].width = editorGridWidth;
+    drafts[idx].height = editorGridHeight;
+    drafts[idx].maxAP = editorMaxAP;
+    drafts[idx].grid = editorGrid.map(row => [...row]);
+    drafts[idx].entities = editorEntities.map(e => ({ ...e }));
+    drafts[idx].connections = editorConnections.map(c => ({
+      switch: { ...c.switch },
+      door: { ...c.door }
+    }));
+    drafts[idx].portalConnections = editorPortalConnections.map(c => ({
+      p1: { ...c.p1 },
+      p2: { ...c.p2 }
+    }));
+    drafts[idx].published = drafts[idx].published || false;
+    drafts[idx].verified = editorVerified;
+    drafts[idx].optimalAP = editorOptimalAP;
+    drafts[idx].optimalMoves = editorOptimalMoves;
+    drafts[idx].optimalPath = editorOptimalPath;
+  }
+
+  saveLocalDrafts(username, drafts);
+}
+
+function saveEditorDraft() {
+  saveEditorDraftSilent();
+  alert("임시 저장되었습니다.\n\n⚠️ 주의: 브라우저 인터넷 사용 기록(쿠키 및 사이트 데이터)을 삭제하면 임시 저장된 맵이 모두 사라질 수 있습니다. 안전하게 보존하시려면 꼭 '배포하기'를 완료해 주세요.");
+}
+
+async function publishEditorMap() {
+  if (!editorVerified) {
+    alert("먼저 테스트 플레이로 맵을 깨야 배포할 수 있습니다!");
+    return;
+  }
+
+  const username = localStorage.getItem('runic_dungeon_user') || '모험가';
+  
+  editorMapName = document.getElementById('editorMapNameInput').value.trim() || "새로운 퍼즐";
+  const parsedMaxAp = parseInt(document.getElementById('editorMapMaxApInput').value, 10);
+  editorMaxAP = isNaN(parsedMaxAp) ? (editorMaxAP || 50) : parsedMaxAp;
+
+  const publishData = {
+    id: currentEditingMapId,
+    name: editorMapName,
+    creator: username,
+    width: editorGridWidth,
+    height: editorGridHeight,
+    maxAP: editorMaxAP,
+    optimalAP: editorOptimalAP,
+    optimalMoves: editorOptimalMoves,
+    optimalPath: editorOptimalPath,
+    published: true,
+    grid: editorGrid.map(row => [...row]),
+    entities: editorEntities.map(e => ({ ...e })),
+    connections: editorConnections.map(c => ({
+      switch: { ...c.switch },
+      door: { ...c.door }
+    })),
+    portalConnections: editorPortalConnections.map(c => ({
+      p1: { ...c.p1 },
+      p2: { ...c.p2 }
+    }))
+  };
+
+  const publishBtn = document.getElementById('btnEditorPublish');
+  publishBtn.disabled = true;
+  publishBtn.textContent = "🚀 배포 중...";
+
+  try {
+    const dbData = await fetchCloudData();
+    let customMaps = dbData["custom_maps"] || {};
+    customMaps[currentEditingMapId] = publishData;
+    dbData["custom_maps"] = customMaps;
+    await saveCloudData(dbData);
+
+    let drafts = loadLocalDrafts(username);
+    const idx = drafts.findIndex(m => m.id === currentEditingMapId);
+    if (idx !== -1) {
+      drafts[idx].published = true;
+      drafts[idx].verified = true;
+      drafts[idx].optimalAP = editorOptimalAP;
+      drafts[idx].optimalMoves = editorOptimalMoves;
+      drafts[idx].optimalPath = editorOptimalPath;
+      drafts[idx].name = editorMapName;
+      drafts[idx].width = editorGridWidth;
+      drafts[idx].height = editorGridHeight;
+      drafts[idx].maxAP = editorMaxAP;
+      drafts[idx].grid = editorGrid.map(row => [...row]);
+      drafts[idx].entities = editorEntities.map(e => ({ ...e }));
+      drafts[idx].connections = editorConnections.map(c => ({
+        switch: { ...c.switch },
+        door: { ...c.door }
+      }));
+      drafts[idx].portalConnections = editorPortalConnections.map(c => ({
+        p1: { ...c.p1 },
+        p2: { ...c.p2 }
+      }));
+    }
+    saveLocalDrafts(username, drafts);
+
+    alert("배포 완료되었습니다! 이제 모든 모험가가 이 맵을 즐길 수 있습니다.");
+    
+    isEditorMode = false;
+    document.getElementById('mapEditorOverlay').classList.add('hidden');
+    document.getElementById('customMapListOverlay').classList.remove('hidden');
+    renderCustomMapList();
+  } catch (e) {
+    console.error("Publish error:", e);
+    alert("배포하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+  } finally {
+    publishBtn.textContent = "🚀 배포하기";
+    publishBtn.disabled = !editorVerified;
+  }
+}
+
+function exitTestPlayAndReturnToEditor() {
+  document.getElementById('screenOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.remove('testing-mode');
+  document.getElementById('appContainer').classList.add('hidden');
+  window.customMapMode = null;
+  isEditorTesting = false;
+
+  document.getElementById('mapEditorOverlay').classList.remove('hidden');
+  
+  isEditorMode = true;
+  renderEditorGrid();
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn) {
+    playBackBtn.innerHTML = '<span class="icon">↩️</span> <span class="text">메뉴로 돌아가기</span>';
+    playBackBtn.setAttribute('data-tooltip', '이전 메뉴로 돌아가기');
+  }
+}
+
+function exitCustomPlayAndReturnToList() {
+  document.getElementById('screenOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.remove('custom-play-mode');
+  document.getElementById('appContainer').classList.add('hidden');
+  window.customMapMode = null;
+  currentPlayingCustomMap = null;
+
+  document.getElementById('friendMapsOverlay').classList.remove('hidden');
+  document.getElementById('customMapMenuOverlay').classList.add('hidden');
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn) {
+    playBackBtn.innerHTML = '<span class="icon">↩️</span> <span class="text">메뉴로 돌아가기</span>';
+    playBackBtn.setAttribute('data-tooltip', '이전 메뉴로 돌아가기');
+  }
+}
+
+async function openFriendMapsList() {
+  document.getElementById('customMapMenuOverlay').classList.add('hidden');
+  document.getElementById('friendMapsOverlay').classList.remove('hidden');
+  await renderFriendMapsList();
+}
+
+async function renderFriendMapsList() {
+  const grid = document.getElementById('friendMapsGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 0.95rem; font-family: var(--font-body);">데이터를 불러오는 중... (Syncing Cloud)</div>';
+
+  try {
+    const dbData = await fetchCloudData();
+    const customMapsObj = dbData["custom_maps"] || {};
+    const customMaps = Object.values(customMapsObj).filter(m => m.published);
+
+    grid.innerHTML = '';
+    if (customMaps.length === 0) {
+      grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 0.95rem; font-family: var(--font-body);">배포된 맵이 없습니다. 첫 번째로 맵을 배포해 보세요!</div>';
+      return;
+    }
+
+    customMaps.sort((a, b) => b.id.localeCompare(a.id));
+
+    customMaps.forEach((map) => {
+      const card = document.createElement('div');
+      card.className = 'stage-card';
+
+      const numDiv = document.createElement('div');
+      numDiv.className = 'stage-num';
+      numDiv.style.fontSize = '1.05rem';
+      numDiv.style.wordBreak = 'break-all';
+      numDiv.style.whiteSpace = 'normal';
+      numDiv.style.textAlign = 'center';
+      numDiv.style.lineHeight = '1.2';
+      numDiv.style.margin = '4px 0';
+      numDiv.textContent = map.creator;
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'stage-name';
+      nameDiv.textContent = map.name;
+
+      const sizeDiv = document.createElement('div');
+      sizeDiv.className = 'stage-stars';
+      sizeDiv.style.fontSize = '0.85rem';
+      sizeDiv.style.color = 'var(--color-primary)';
+      sizeDiv.textContent = `📏 ${getActiveMapSizeString(map)}`;
+
+      const apDiv = document.createElement('div');
+      apDiv.className = 'stage-retries';
+      apDiv.style.fontSize = '0.7rem';
+      apDiv.style.color = 'rgba(255, 255, 255, 0.7)';
+      apDiv.style.marginTop = '4px';
+      apDiv.style.fontFamily = 'var(--font-body)';
+      apDiv.innerHTML = `<span style="color: #ff9100; font-weight: bold;">최적:</span> ${map.optimalAP} AP (${map.optimalMoves} Move)`;
+
+      const actionsDiv = document.createElement('div');
+      actionsDiv.style.display = 'flex';
+      actionsDiv.style.gap = '8px';
+      actionsDiv.style.marginTop = '10px';
+      actionsDiv.style.width = '100%';
+      actionsDiv.style.justifyContent = 'center';
+      actionsDiv.style.zIndex = '10';
+
+      const btnRank = document.createElement('button');
+      btnRank.className = 'btn btn-primary';
+      btnRank.style.flex = '1';
+      btnRank.style.padding = '6px 0';
+      btnRank.style.fontSize = '0.75rem';
+      btnRank.style.margin = '0';
+      btnRank.style.backgroundColor = '#00e5ff';
+      btnRank.style.color = '#000';
+      btnRank.style.fontWeight = 'bold';
+      btnRank.textContent = '🏆 랭킹';
+      btnRank.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showCustomMapLeaderboard(map.id, map.name);
+      });
+
+      actionsDiv.appendChild(btnRank);
+
+      card.appendChild(numDiv);
+      card.appendChild(nameDiv);
+      card.appendChild(sizeDiv);
+      card.appendChild(apDiv);
+      card.appendChild(actionsDiv);
+
+      card.addEventListener('click', () => {
+        sound.init();
+        startFriendMapPlay(map);
+      });
+
+      grid.appendChild(card);
+    });
+  } catch (e) {
+    console.error("Fetch custom maps error:", e);
+    grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--color-danger); font-size: 0.95rem; font-family: var(--font-body);">데이터를 불러오는 중 오류가 발생했습니다.</div>';
+  }
+}
+
+function startFriendMapPlay(map) {
+  currentPlayingCustomMap = map;
+  window.customMapMode = 'play';
+  
+  document.getElementById('friendMapsOverlay').classList.add('hidden');
+  document.getElementById('customMapMenuOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.add('custom-play-mode');
+  document.getElementById('appContainer').classList.remove('hidden');
+
+  document.getElementById('levelSelect').innerHTML = `<option value="-2">👥 ${map.creator}의 맵: ${map.name}</option>`;
+  document.getElementById('levelSelect').value = "-2";
+  document.getElementById('levelSelect').disabled = true;
+
+  const playBackBtn = document.getElementById('btnPlayBackToMenu');
+  if (playBackBtn) {
+    playBackBtn.innerHTML = '<span class="icon">👥</span> <span class="text">목록으로 돌아가기</span>';
+    playBackBtn.setAttribute('data-tooltip', '친구 맵 목록으로 돌아가기');
+  }
+
+  const mapData = {
+    name: map.name,
+    width: map.width,
+    height: map.height,
+    maxAP: map.maxAP,
+    grid: map.grid.map(row => [...row]),
+    entities: map.entities.map(e => ({ ...e })),
+    connections: map.connections ? map.connections.map(c => ({
+      switch: { ...c.switch },
+      door: { ...c.door }
+    })) : []
+  };
+
+  sound.init();
+  loadLevel(null, mapData);
+  canvas.focus();
+}
+
 function showChapterSelectMenu() {
+  document.getElementById('modeSelectOverlay').classList.add('hidden');
+  document.getElementById('stageSelectOverlay').classList.add('hidden');
+  document.getElementById('appContainer').classList.add('hidden');
   document.getElementById('chapterSelectOverlay').classList.remove('hidden');
 }
 
@@ -3493,3 +6026,129 @@ function shakeCard(cardId) {
 
 // Global script load initializer
 window.onload = initGame;
+
+async function showAdminUserSelectMenu() {
+  document.getElementById('modeSelectOverlay').classList.add('hidden');
+  document.getElementById('adminUserSelectOverlay').classList.remove('hidden');
+  
+  const grid = document.getElementById('adminUserSelectGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: var(--text-muted); font-family: var(--font-body);">모험가 목록을 불러오는 중...</div>';
+  
+  try {
+    const dbData = await fetchCloudData();
+    const users = Object.keys(USER_PASSWORDS);
+    
+    grid.innerHTML = '';
+    users.forEach(u => {
+      const card = document.createElement('div');
+      card.className = 'chapter-card';
+      card.style.cursor = 'pointer';
+      
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'chapter-num';
+      iconDiv.style.fontSize = '2.5rem';
+      iconDiv.innerHTML = getUserIcon(u);
+      
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'chapter-name';
+      nameDiv.style.marginTop = '10px';
+      nameDiv.textContent = u;
+      
+      const userRecords = dbData[u] || {};
+      const clearedCount = Object.keys(userRecords).filter(k => !k.startsWith('map_')).length;
+      
+      const descDiv = document.createElement('div');
+      descDiv.className = 'chapter-desc';
+      descDiv.textContent = `클리어한 스테이지: ${clearedCount}개`;
+      
+      card.appendChild(iconDiv);
+      card.appendChild(nameDiv);
+      card.appendChild(descDiv);
+      
+      card.addEventListener('click', () => {
+        showAdminUserStageMenu(u, dbData[u] || {});
+      });
+      
+      grid.appendChild(card);
+    });
+  } catch (e) {
+    console.error("Failed to load admin user list:", e);
+    grid.innerHTML = '<div style="grid-column: 1 / -1; padding: 40px; text-align: center; color: var(--color-danger); font-family: var(--font-body);">목록을 불러오는 중 오류가 발생했습니다.</div>';
+  }
+}
+
+async function showAdminUserStageMenu(targetUser, userRecords) {
+  document.getElementById('adminUserSelectOverlay').classList.add('hidden');
+  document.getElementById('adminUserStageOverlay').classList.remove('hidden');
+  
+  const titleEl = document.getElementById('adminUserStageTitle');
+  if (titleEl) {
+    titleEl.textContent = `🕵️ ${targetUser} 모험가 기록`;
+  }
+  
+  const tbody = document.getElementById('adminUserStageTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  
+  let prevCleared = true;
+  
+  DEFAULT_LEVELS.forEach((lvl, idx) => {
+    const ch = lvl.chapter !== undefined ? lvl.chapter : 0;
+    const firstIdxOfChapter = DEFAULT_LEVELS.findIndex(l => (l.chapter !== undefined ? l.chapter : 0) === ch);
+    const lvlNumInChapter = idx - firstIdxOfChapter + 1;
+    const displayStr = ch === 0 ? `0-${lvlNumInChapter}` : `${ch}-${lvlNumInChapter}`;
+    
+    const record = userRecords[idx];
+    
+    let isUnlocked = false;
+    if (idx === 0) {
+      isUnlocked = true;
+    } else {
+      isUnlocked = prevCleared;
+    }
+    
+    if (!isUnlocked) {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td style="opacity: 0.5; font-family: var(--font-body);">${displayStr} (${lvl.name})</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body);">시도 없음 (잠김)</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body);">-</td>
+      `;
+      tbody.appendChild(row);
+      prevCleared = false;
+      return;
+    }
+    
+    const row = document.createElement('tr');
+    if (record) {
+      const starsText = '★'.repeat(record.stars) + '☆'.repeat(3 - record.stars);
+      const timeText = formatTime(record.clearTime);
+      const retryCount = record.retries || 1;
+      
+      row.innerHTML = `
+        <td style="font-family: var(--font-body);"><span style="color: var(--color-primary); font-weight: bold;">${displayStr}</span> (${lvl.name})</td>
+        <td style="color: #ffea00; font-weight: bold; font-family: var(--font-body);">${starsText}</td>
+        <td style="font-family: var(--font-body);">${retryCount}회</td>
+        <td style="font-family: var(--font-body);">${timeText}</td>
+        <td style="font-family: var(--font-body);">
+          <button onclick="window.startReplay('${targetUser}', ${idx}, '${record.path}')" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">▶ 재생</button>
+        </td>
+      `;
+      prevCleared = true;
+    } else {
+      row.innerHTML = `
+        <td style="font-family: var(--font-body);"><span style="color: #ff9100; font-weight: bold;">${displayStr}</span> (${lvl.name})</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body);">시도 중</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body);">-</td>
+      `;
+      prevCleared = false;
+    }
+    
+    tbody.appendChild(row);
+  });
+}

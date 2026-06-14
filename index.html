@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=39">
+  <link rel="stylesheet" href="style.css?v=77">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -37,6 +37,9 @@
         <button id="btnLeaderboard" class="icon-btn tooltip hidden" data-tooltip="순위표 보기">
           <span class="icon">🏆</span>
         </button>
+        <button id="btnAdminPaths" class="icon-btn tooltip hidden" data-tooltip="모험가 경로">
+          <span class="icon">🕵️</span>
+        </button>
         <div class="sound-wrapper">
           <button id="btnSoundToggle" class="icon-btn tooltip" data-tooltip="사운드 조절">
             <span class="icon">🔊</span>
@@ -49,8 +52,8 @@
         <button id="btnHelpToggle" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
           <span class="icon">❓</span>
         </button>
-        <button id="btnLogout" class="icon-btn tooltip hidden" data-tooltip="로그아웃">
-          <span class="icon">🚪</span>
+        <button id="btnBackToMenu" class="icon-btn tooltip" data-tooltip="이전 메뉴로 돌아가기">
+          <span class="icon">↩️</span>
         </button>
       </div>
     </header>
@@ -58,16 +61,16 @@
     <!-- 레벨 선택 및 설명 바 -->
     <section class="level-bar">
       <div class="level-select-wrapper">
-        <label for="levelSelect" class="level-select-label">스테이지: </label>
+        <label for="levelSelect" class="level-select-label" style="display: none !important;">스테이지: </label>
         <select id="levelSelect" class="styled-select"></select>
-        <button id="btnBackToMenu" class="btn btn-secondary tooltip" data-tooltip="스테이지 선택 메뉴로 이동">
-          <span>🗺️ Menu</span>
-        </button>
       </div>
       <div class="level-info">
         <h2 id="levelName">레벨 이름</h2>
         <p id="levelDesc">레벨 설명</p>
       </div>
+      <button id="btnPlayBackToMenu" class="btn btn-secondary tooltip" data-tooltip="이전 메뉴로 돌아가기" style="margin-left: auto; flex-shrink: 0; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+        <span class="icon">↩️</span> <span class="text">메뉴로 돌아가기</span>
+      </button>
     </section>
 
     <section class="game-playground">
@@ -105,6 +108,20 @@
           <div class="hud-stat">
             <span class="hud-label">이동 수</span>
             <span id="moveCount" class="hud-value">0</span>
+          </div>
+        </div>
+
+        <div class="hud-card retry-card" id="hudRetryCard">
+          <div class="hud-stat">
+            <span class="hud-label">시도 횟수</span>
+            <span id="retryCountDisplay" class="hud-value" style="color: #ff9100;">1</span>
+          </div>
+        </div>
+
+        <div class="hud-card timer-card" id="hudTimerCard">
+          <div class="hud-stat">
+            <span class="hud-label">경과 시간</span>
+            <span id="timerDisplay" class="hud-value" style="color: #00e5ff; font-family: monospace;">00:00</span>
           </div>
         </div>
 
@@ -160,10 +177,7 @@
       </div>
     </section>
 
-    <!-- 푸터 영역 -->
-    <footer class="game-footer">
-      <p>방향키(↑↓←→) 또는 WASD로 이동. Z: 되돌리기 | Y: 다시실행 | R: 다시시작 | ESC: 레벨 선택</p>
-    </footer>
+
   </main>
 
   <!-- 게임 설명 / 도움말 팝업 -->
@@ -263,6 +277,14 @@
               <p>모든 상자를 노란색 별 모양 목표 구역(Goal Zone) 위에 올려놓으면 스테이지를 클리어합니다!</p>
             </div>
           </div>
+          <!-- 기믹 카드 9: 텔레포트 -->
+          <div class="guide-card">
+            <span class="guide-icon green-glow" style="color: #00e676;">▲</span>
+            <div class="guide-text">
+              <h3>텔레포트 포탈 (Teleport Portal)</h3>
+              <p>플레이어가 초록색 세모 포탈을 밟으면 맵 상의 반대편 초록색 세모 포탈로 즉시 순간이동합니다. 상자는 포탈 안으로 밀 수 없습니다.</p>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -273,7 +295,31 @@
 
   <!-- 챕터 선택 화면 -->
   <div id="chapterSelectOverlay" class="chapter-select-overlay hidden">
+    <button id="btnChapterSelectLogout" class="screen-logout-btn tooltip tooltip-bottom" data-tooltip="로그아웃">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+    </button>
     <div class="chapter-select-box glass-card">
+      <div class="card-corner-buttons">
+        <button id="btnChapterSelectLeaderboard" class="icon-btn tooltip tooltip-bottom" data-tooltip="순위표 보기">
+          <span class="icon">🏆</span>
+        </button>
+        <div class="sound-wrapper">
+          <button id="btnChapterSelectSound" class="icon-btn tooltip tooltip-bottom" data-tooltip="사운드 조절">
+            <span class="icon">🔊</span>
+          </button>
+          <div id="volumeDropdownFooter" class="volume-slider-dropdown hidden">
+            <input type="range" class="volume-slider" min="0" max="100" value="40">
+            <span class="volume-text">40%</span>
+          </div>
+        </div>
+        <button id="btnChapterSelectHelp" class="icon-btn tooltip tooltip-bottom" data-tooltip="게임 규칙 / 설명">
+          <span class="icon">❓</span>
+        </button>
+      </div>
       <div class="chapter-select-logo">
         <h2>📖 모험의 서 (Chapters)</h2>
         <p class="chapter-select-subtitle">탐험할 챕터를 선택해 모험을 시작하세요.</p>
@@ -283,54 +329,59 @@
       <div id="chapterSelectGrid" class="chapter-grid">
         <!-- 튜토리얼 (플레이 가능) -->
         <div class="chapter-card" id="chapterCard1">
-          <div class="chapter-badge unlocked">플레이 가능</div>
           <div class="chapter-num">기초 훈련</div>
-          <div class="chapter-name">⚙️ 튜토리얼 (Tutorial)</div>
-          <div class="chapter-desc">기초 상자 밀기 규칙과 기본 퍼즐 메커니즘을 학습합니다. (1층~5층)</div>
+          <div class="chapter-name">⚙️ 튜토리얼</div>
+          <div class="chapter-desc">기초 상자 밀기 규칙과 기본 퍼즐 메커니즘을 학습합니다.</div>
         </div>
-        <!-- 챕터 1 (출시 예정 / 잠금) -->
-        <div class="chapter-card locked" id="chapterCard2">
-          <div class="chapter-badge locked">🔒 출시 예정</div>
+        <!-- 챕터 1 (플레이 가능) -->
+        <div class="chapter-card" id="chapterCard2">
           <div class="chapter-num">제 1장</div>
-          <div class="chapter-name">🌋 심연의 사원 (Abyssal Temple)</div>
-          <div class="chapter-desc">더 깊은 어둠 속, 압력판 게이트와 복잡한 갈림길이 모험가를 위협합니다.</div>
+          <div class="chapter-name">📦 박스 창고</div>
+          <div class="chapter-desc">촘촘한 상자 장벽을 넘나들며 목표지점에 상자를 옮기세요</div>
         </div>
         <!-- 챕터 2 (출시 예정 / 잠금) -->
         <div class="chapter-card locked" id="chapterCard3">
           <div class="chapter-badge locked">🔒 출시 예정</div>
           <div class="chapter-num">제 2장</div>
-          <div class="chapter-name">❄️ 서리의 요새 (Frost Fortress)</div>
+          <div class="chapter-name">❄️ 서리의 요새</div>
           <div class="chapter-desc">얼어붙은 관성의 얼음 빙판과 치명적인 함정이 모험가의 길을 가로막습니다.</div>
         </div>
       </div>
       
-      <!-- 푸터 버튼 (순위표, 사운드, 도움말, 로그아웃) -->
-      <div class="chapter-select-buttons">
-        <button id="btnChapterSelectLeaderboard" class="icon-btn tooltip" data-tooltip="순위표 보기">
-          <span class="icon">🏆</span>
-        </button>
-        <div class="sound-wrapper">
-          <button id="btnChapterSelectSound" class="icon-btn tooltip" data-tooltip="사운드 조절">
-            <span class="icon">🔊</span>
-          </button>
-          <div id="volumeDropdownFooter" class="volume-slider-dropdown hidden">
-            <input type="range" class="volume-slider" min="0" max="100" value="40">
-            <span class="volume-text">40%</span>
-          </div>
-        </div>
-        <button id="btnChapterSelectHelp" class="icon-btn tooltip" data-tooltip="게임 규칙 / 설명">
-          <span class="icon">❓</span>
-        </button>
-        <button id="btnChapterSelectLogout" class="icon-btn tooltip" data-tooltip="로그아웃">
-          <span class="icon">🚪</span>
-        </button>
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnChapterSelectBackToMode" class="footer-back-btn">↩️ 뒤로가기</button>
       </div>
     </div>
   </div>
 
   <!-- 스테이지 선택 화면 -->
   <div id="stageSelectOverlay" class="stage-select-overlay hidden">
+    <button id="btnStageSelectLogout" class="screen-logout-btn tooltip tooltip-bottom" data-tooltip="로그아웃">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+    </button>
     <div class="stage-select-box glass-card">
+      <div class="card-corner-buttons">
+        <button id="btnStageSelectLeaderboard" class="icon-btn tooltip tooltip-bottom" data-tooltip="챕터 순위표 보기">
+          <span class="icon">🏆</span>
+        </button>
+        <div class="sound-wrapper">
+          <button id="btnStageSelectSound" class="icon-btn tooltip tooltip-bottom" data-tooltip="사운드 조절">
+            <span class="icon">🔊</span>
+          </button>
+          <div id="volumeDropdownStageSelect" class="volume-slider-dropdown hidden">
+            <input type="range" class="volume-slider" min="0" max="100" value="40">
+            <span class="volume-text">40%</span>
+          </div>
+        </div>
+        <button id="btnStageSelectHelp" class="icon-btn tooltip tooltip-bottom" data-tooltip="게임 규칙 / 설명">
+          <span class="icon">❓</span>
+        </button>
+      </div>
       <div class="stage-select-logo">
         <h2>🗺️ 던전 탐험</h2>
         <p class="stage-select-subtitle">탐험할 층(Stage)을 선택하세요.</p>
@@ -341,11 +392,9 @@
         <!-- JS를 통해 5개의 스테이지 카드가 동적으로 생성됩니다. -->
       </div>
       
-      <!-- 푸터 버튼 (뒤로가기, 순위표, 로그아웃) -->
-      <div class="stage-select-buttons">
-        <button id="btnStageSelectBackToChapters" class="btn btn-secondary">↩️ 챕터 선택</button>
-        <button id="btnStageSelectLeaderboard" class="btn btn-secondary">🏆 순위표</button>
-        <button id="btnStageSelectLogout" class="btn btn-danger">🚪 로그아웃</button>
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnStageSelectBackToChapters" class="footer-back-btn">↩️ 뒤로가기</button>
       </div>
     </div>
   </div>
@@ -401,11 +450,235 @@
     </div>
   </div>
 
+  <!-- 모드 선택 화면 -->
+  <div id="modeSelectOverlay" class="mode-select-overlay hidden">
+    <button id="btnModeSelectLogout" class="screen-logout-btn tooltip tooltip-bottom" data-tooltip="로그아웃">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+    </button>
+    <div class="mode-select-box glass-card">
+      <div class="mode-select-logo">
+        <h2>🎮 모험 모드 선택</h2>
+        <p class="mode-select-subtitle">원하는 모드를 선택하여 모험을 시작하세요.</p>
+      </div>
+      <div class="mode-grid">
+        <div class="mode-card" id="btnModeStage">
+          <div class="mode-icon">🗺️</div>
+          <div class="mode-name">스테이지 모드</div>
+          <div class="mode-desc">제작진이 준비한 공식 퍼즐 스테이지들을 순서대로 탐험하고 3성 클리어에 도전합니다.</div>
+        </div>
+        <div class="mode-card" id="btnModeCustom">
+          <div class="mode-icon">🛠️</div>
+          <div class="mode-name">맵 개발 모드</div>
+          <div class="mode-desc">나만의 독창적인 퍼즐 맵을 직접 제작하고, 친구들이 만든 다양한 커스텀 맵을 플레이해보세요.</div>
+        </div>
+        <!-- 관리자 전용: 모험가 경로 조회 모드 -->
+        <div class="mode-card hidden" id="btnModeAdminPaths">
+          <div class="mode-icon">🕵️</div>
+          <div class="mode-name">모험가 경로</div>
+          <div class="mode-desc">모험가들의 캠페인 플레이 기록, 시도 횟수, 클리어 타임을 추적하고 상세 경로를 재생합니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 관리자 전용: 모험가 선택 화면 -->
+  <div id="adminUserSelectOverlay" class="chapter-select-overlay hidden">
+    <div class="chapter-select-box glass-card">
+      <div class="chapter-select-logo">
+        <h2>🕵️ 모험가 목록</h2>
+        <p class="chapter-select-subtitle">기록 및 경로를 확인할 모험가를 선택하세요.</p>
+      </div>
+      <div id="adminUserSelectGrid" class="chapter-grid">
+        <!-- 모험가 목록 카드가 동적으로 주입됩니다 -->
+      </div>
+      
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnAdminUserSelectBack" class="footer-back-btn">↩️ 뒤로가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 관리자 전용: 모험가 스테이지 기록 화면 -->
+  <div id="adminUserStageOverlay" class="stage-select-overlay hidden">
+    <div class="stage-select-box glass-card">
+      <div class="stage-select-logo">
+        <h2 id="adminUserStageTitle">🕵️ 모험가 기록</h2>
+        <p class="stage-select-subtitle">각 스테이지별 클리어 기록 및 상세 정보입니다.</p>
+      </div>
+      
+      <div class="table-responsive" style="max-height: 420px; overflow-y: auto; margin-top: 15px; border-radius: 8px; border: 1px solid var(--border-glass);">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>스테이지</th>
+              <th>획득 별</th>
+              <th>시도 횟수</th>
+              <th>클리어 시간</th>
+              <th>경로 재생</th>
+            </tr>
+          </thead>
+          <tbody id="adminUserStageTableBody">
+            <!-- 스테이지별 데이터가 로드됩니다 -->
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnAdminUserStageBack" class="footer-back-btn">↩️ 뒤로가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 커스텀 맵 메뉴 화면 -->
+  <div id="customMapMenuOverlay" class="custom-map-menu-overlay hidden">
+    <div class="custom-map-box glass-card">
+      <div class="custom-map-logo">
+        <h2>🛠️ 맵 개발 및 체험</h2>
+        <p class="custom-map-subtitle">나만의 퍼즐을 설계하거나 친구들의 창작 맵을 즐겨보세요.</p>
+      </div>
+      <div class="custom-map-grid">
+        <div class="custom-map-card" id="btnCustomMapEdit">
+          <div class="custom-map-icon">🛠️</div>
+          <div class="custom-map-name">맵 개발 (에디터)</div>
+          <div class="custom-map-desc">각종 기믹 타일과 상자, 순간이동 포탈을 자유롭게 배치하여 자신만의 Sokoban 퍼즐 맵을 제작합니다.</div>
+        </div>
+        <div class="custom-map-card" id="btnCustomMapPlay">
+          <div class="custom-map-icon">👥</div>
+          <div class="custom-map-name">친구가 만든 맵 체험하기</div>
+          <div class="custom-map-desc">다른 플레이어들이 만들고 직접 깨서 배포한 기발하고 도전적인 맵들을 직접 플레이해 봅니다.</div>
+        </div>
+      </div>
+      
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnCustomMapBackToMode" class="footer-back-btn">↩️ 뒤로가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 커스텀 맵 목록 및 생성 -->
+  <div id="customMapListOverlay" class="stage-select-overlay hidden">
+    <div class="stage-select-box glass-card" style="max-width: 900px; padding: 30px; display: flex; flex-direction: column; gap: 15px; width: 100%;">
+      <div class="custom-map-list-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <h2 style="margin: 0; font-size: 1.8rem;">🛠️ 나의 제작 맵 목록</h2>
+        <button id="btnCreateNewCustomMap" class="btn btn-primary" style="margin: 0; padding: 10px 20px;">➕ 새 맵 만들기</button>
+      </div>
+      <p class="custom-map-list-subtitle" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px; text-align: left; width: 100%;">임시 저장 및 배포 완료된 나만의 퍼즐 목록입니다. <span style="color: #ff9100; font-weight: bold; margin-left: 10px;">⚠️ 주의: 임시 저장(💾) 상태의 맵은 브라우저 쿠키/인터넷 사용 기록 삭제 시 함께 삭제됩니다.</span></p>
+      
+      <!-- 나의 제작 맵 그리드 -->
+      <div id="customMapGrid" class="stage-grid scrollable-y" style="max-height: 380px; padding: 10px 5px; margin: 10px 0; overflow-y: auto; width: 100%;">
+        <!-- 동적으로 나의 제작 맵 카드들이 생성됩니다. -->
+      </div>
+      
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnCustomMapListBack" class="footer-back-btn">↩️ 뒤로가기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 맵 에디터 작업실 -->
+  <div id="mapEditorOverlay" class="map-editor-overlay hidden">
+    <div class="editor-container glass-card">
+      <div class="editor-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; margin-bottom: 10px;">
+        <h2 id="editorMapTitle" style="margin: 0; font-size: 1.2rem; color: var(--color-primary);">🛠️ 맵 개발실</h2>
+        <div class="editor-header-inputs" style="display: flex; align-items: center; gap: 8px;">
+          <input type="text" id="editorMapNameInput" placeholder="맵 이름을 입력하세요" class="styled-input" maxlength="20" style="width: 150px; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px;">
+          <label style="font-size: 0.85rem; color: #aaa; margin-left: 5px;">최대 AP:</label>
+          <input type="text" id="editorMapMaxApInput" value="최적 클리어로 갱신" class="styled-input" style="width: 130px; padding: 6px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; text-align: center;" disabled>
+        </div>
+        <div class="editor-actions" style="display: flex; gap: 8px;">
+          <button id="btnEditorTestPlay" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.8rem;">🎮 테스트 플레이</button>
+          <button id="btnEditorPublish" class="btn btn-warning" style="padding: 6px 12px; font-size: 0.8rem;" disabled>🚀 배포하기</button>
+          <button id="btnEditorSaveDraft" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">💾 임시 저장</button>
+          <button id="btnEditorClose" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.8rem;">🚪 나가기</button>
+        </div>
+      </div>
+      
+      <div class="editor-body" style="display: flex; gap: 15px; height: calc(100% - 60px);">
+        <!-- Palette -->
+        <div class="editor-palette" id="editorPalette" style="width: 230px; display: flex; flex-direction: column; gap: 10px; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow-y: auto; text-align: left;">
+          <h3 style="margin: 0; font-size: 0.9rem; color: var(--color-primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🧱 타일 배치</h3>
+          <div class="palette-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+            <button class="palette-item" data-type="empty" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🧹 빈 공간</button>
+            <button class="palette-item" data-type="." style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🟩 바닥</button>
+            <button class="palette-item active" data-type="W" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🧱 벽</button>
+            <button class="palette-item" data-type="I" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">❄️ 얼음</button>
+            <button class="palette-item" data-type="H" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🕳️ 구멍</button>
+            <button class="palette-item" data-type="D" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🔒 잠긴 문</button>
+            <button class="palette-item" data-type="S" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🔴 일시 스위치</button>
+            <button class="palette-item" data-type="K" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🟡 영구 스위치</button>
+            <button class="palette-item" data-type="T" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🔺 가시</button>
+            <button class="palette-item" data-type="P" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">▲ 포탈</button>
+            <button class="palette-item" data-type="C" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🧱 깨진바닥1</button>
+            <button class="palette-item" data-type="X" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🧱 깨진바닥2</button>
+            <button class="palette-item" data-type="^" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">⬆️ 일방 (위)</button>
+            <button class="palette-item" data-type="v" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">⬇️ 일방 (밑)</button>
+            <button class="palette-item" data-type="<" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">⬅️ 일방 (왼)</button>
+            <button class="palette-item" data-type=">" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">➡️ 일방 (오)</button>
+          </div>
+          
+          <h3 style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--color-primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🚨 필수 배치</h3>
+          <div class="palette-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+            <button class="palette-item" data-type="player" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🤖 플레이어</button>
+            <button class="palette-item" data-type="box" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">📦 상자</button>
+            <button class="palette-item" data-type="G" style="padding: 6px; font-size: 0.75rem; text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer;">🌟 목표</button>
+          </div>
+          
+          <h3 style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--color-primary); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">🔗 연결 상태</h3>
+          <div id="editorLinkStatus" class="editor-link-status" style="font-size: 0.75rem; color: #ff9100; text-align: center; margin-top: 2px; margin-bottom: 6px;">선택 해제됨</div>
+          <button class="palette-item" data-type="link" style="width: 100%; padding: 8px; font-size: 0.8rem; text-align: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; cursor: pointer; margin-bottom: 8px; display: block;">🔗 연결 도구</button>
+          <div id="editorConnectionsList" style="font-size: 0.75rem; color: #ccc; display: flex; flex-direction: column; gap: 5px; max-height: 140px; overflow-y: auto; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03);">
+            <div style="color: #666; text-align: center; font-style: italic;">연결된 장치 없음</div>
+          </div>
+        </div>
+        
+        <!-- Canvas/Grid Workspace -->
+        <div class="editor-workspace" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 10px; overflow: auto;">
+          <div class="editor-grid-scroller" style="max-height: 100%; max-width: 100%;">
+            <div id="editorGrid" class="editor-grid-table" style="display: grid; gap: 2px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 4px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 친구가 만든 맵 체험하기 목록 화면 -->
+  <div id="friendMapsOverlay" class="stage-select-overlay hidden">
+    <div class="stage-select-box glass-card" style="max-width: 900px; padding: 30px; display: flex; flex-direction: column; gap: 15px; width: 100%;">
+      <div class="card-corner-buttons">
+        <button id="btnFriendMapsRefresh" class="icon-btn tooltip tooltip-bottom" data-tooltip="새로고침">
+          <span class="icon">🔄</span>
+        </button>
+      </div>
+      <div class="stage-select-logo" style="text-align: center;">
+        <h2>👥 친구가 만든 맵 체험</h2>
+        <p class="stage-select-subtitle" style="margin-bottom: 5px;">다른 플레이어들이 직접 설계하고 배포한 커스텀 맵을 즐겨보세요.</p>
+      </div>
+      
+      <!-- 스테이지 카드 그리드 -->
+      <div id="friendMapsGrid" class="stage-grid scrollable-y" style="max-height: 380px; padding: 10px 5px; margin: 10px 0; overflow-y: auto; width: 100%;">
+        <!-- 동적으로 커스텀 맵 카드들이 생성됩니다. -->
+      </div>
+      
+      <!-- 하단 중앙 뒤로가기 버튼 -->
+      <div class="footer-back-container">
+        <button id="btnFriendMapsBack" class="footer-back-btn">↩️ 뒤로가기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 순위표 모달 -->
   <div class="modal hidden" id="leaderboardModal">
     <div class="modal-content glass-card wide-modal">
       <div class="modal-header">
-        <h2>🏆 실시간 명예의 전당 (순위표)</h2>
+        <h2>🏆 실시간 순위표</h2>
         <button id="btnLeaderboardClose" class="close-btn">&times;</button>
       </div>
       <div class="modal-body scrollable-y">
@@ -417,22 +690,15 @@
                 <th>순위</th>
                 <th>모험가</th>
                 <th>총 획득 별점</th>
-                <th>평균 이동수</th>
-                <th>총 이동수</th>
-                <th>완료 층수</th>
+                <th>평균 시도횟수</th>
+                <th>평균 시간</th>
+                <th>완료 층수 개수</th>
               </tr>
             </thead>
             <tbody id="leaderboardTableBody">
               <!-- 동적으로 로딩됩니다 -->
             </tbody>
           </table>
-        </div>
-        <!-- 관리자 전용 경로 조회 패널 -->
-        <div id="adminPathView" class="admin-path-view hidden">
-          <h3 style="color: var(--color-warning); border-top: 1px solid var(--border-glass); margin-top: 25px; padding-top: 15px; text-align: left; font-size: 1.1rem; text-shadow: 0 0 8px rgba(255, 234, 0, 0.4); font-family: var(--font-title);">🕵️ 관리자 전용: 모험가 클리어 경로</h3>
-          <div id="adminPathList" class="admin-path-list" style="margin-top: 10px; text-align: left; font-size: 0.8rem; background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; border: 1px solid var(--border-glass); max-height: 200px; overflow-y: auto;">
-            <!-- 관리자 전용 경로 데이터가 로드됩니다. -->
-          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -442,7 +708,57 @@
     </div>
   </div>
 
-  <script src="levels.js?v=15"></script>
-  <script src="game.js?v=52"></script>
+  <!-- 커스텀 맵 랭킹 모달 -->
+  <div class="modal hidden" id="customLeaderboardModal">
+    <div class="modal-content glass-card wide-modal">
+      <div class="modal-header">
+        <h2>🏆 맵 랭킹</h2>
+        <button id="btnCustomLeaderboardClose" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y">
+        <p class="leaderboard-desc">해당 맵을 플레이한 모든 모험가의 기록입니다.</p>
+        <div class="table-responsive">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>모험가</th>
+                <th>획득 별</th>
+                <th>시도 횟수</th>
+                <th>클리어 시간</th>
+                <th>클리어 일시</th>
+              </tr>
+            </thead>
+            <tbody id="customLeaderboardTableBody">
+              <!-- 데이터가 로드됩니다 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 관리자 전용 경로 조회 모달 -->
+  <div class="modal hidden" id="adminPathsModal">
+    <div class="modal-content glass-card wide-modal">
+      <div class="modal-header">
+        <h2>🕵️ 모험가 클리어 경로</h2>
+        <button id="btnAdminPathsClose" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y">
+        <p class="leaderboard-desc">각 모험가들이 스테이지별로 클리어한 경로와 시도 횟수입니다. (실시간 재생 가능)</p>
+        <div id="adminPathList" class="admin-path-list" style="margin-top: 10px; text-align: left; font-size: 0.85rem; background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 8px; border: 1px solid var(--border-glass); max-height: 400px; overflow-y: auto;">
+          <!-- 관리자 전용 경로 데이터가 로드됩니다. -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnAdminPathsRefresh" class="btn btn-secondary">🔄 새로고침</button>
+        <button id="btnAdminPathsConfirm" class="btn btn-primary">던전으로 돌아가기</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="levels.js?v=34"></script>
+  <script src="game.js?v=133"></script>
 </body>
 </html>
