@@ -3762,6 +3762,7 @@ const USER_PASSWORDS = {
   '영기': 'dudrldmaak22',
   '조씨': 'alsTlqndls33',
   '앵웅': 'doddnd44',
+  '톰토': 'xhadkxh66',
   '관리자': 'password55'
 };
 
@@ -4173,6 +4174,7 @@ function getUserIconLarge(username) {
     '영기': '🍠',
     '조씨': '🗡️',
     '앵웅': '🚬',
+    '톰토': '🍅',
     '관리자': '🛡️'
   };
   return icons[username] || '🤖';
@@ -4511,24 +4513,41 @@ window.startReplay = function(username, stageIdx, pathString) {
   
   window.replayOriginalLevelIdx = currentLevelIdx;
   
-  // Save source modal to restore later
-  const leaderboardModal = document.getElementById('leaderboardModal');
-  const adminPathsModal = document.getElementById('adminPathsModal');
-  const adminUserStageOverlay = document.getElementById('adminUserStageOverlay');
-  if (leaderboardModal && !leaderboardModal.classList.contains('hidden')) {
-    window.replaySourceModal = 'leaderboardModal';
-  } else if (adminPathsModal && !adminPathsModal.classList.contains('hidden')) {
-    window.replaySourceModal = 'adminPathsModal';
-  } else if (adminUserStageOverlay && !adminUserStageOverlay.classList.contains('hidden')) {
-    window.replaySourceModal = 'adminUserStageOverlay';
-  } else {
-    window.replaySourceModal = null;
-  }
+  // Track and hide all currently active overlays so they don't block the canvas
+  const overlaysToCheck = [
+    'loginOverlay',
+    'modeSelectOverlay',
+    'chapterSelectOverlay',
+    'stageSelectOverlay',
+    'adminUserSelectOverlay',
+    'adminUserStageOverlay',
+    'customMapMenuOverlay',
+    'customMapListOverlay',
+    'mapEditorOverlay',
+    'friendMapsOverlay',
+    'leaderboardModal',
+    'adminPathsModal'
+  ];
   
-  // Close leaderboard, admin paths & custom overlays
-  if (leaderboardModal) leaderboardModal.classList.add('hidden');
-  if (adminPathsModal) adminPathsModal.classList.add('hidden');
-  if (adminUserStageOverlay) adminUserStageOverlay.classList.add('hidden');
+  window.replayHiddenOverlays = [];
+  overlaysToCheck.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains('hidden')) {
+      window.replayHiddenOverlays.push(id);
+      el.classList.add('hidden');
+    }
+  });
+  
+  // Make sure appContainer is visible so the canvas is rendered!
+  const appContainer = document.getElementById('appContainer');
+  if (appContainer) {
+    if (appContainer.classList.contains('hidden')) {
+      window.replayAppContainerWasHidden = true;
+      appContainer.classList.remove('hidden');
+    } else {
+      window.replayAppContainerWasHidden = false;
+    }
+  }
   
   window.isReplaying = true;
   window.replayPath = pathString.split('');
@@ -4573,16 +4592,19 @@ window.stopReplay = function() {
     loadLevel(window.replayOriginalLevelIdx);
   }
   
-  // Re-open active modal/overlay before replay
-  if (window.replaySourceModal === 'adminUserStageOverlay') {
-    document.getElementById('appContainer').classList.add('hidden');
-    document.getElementById('adminUserStageOverlay').classList.remove('hidden');
-  } else if (window.replaySourceModal === 'adminPathsModal') {
-    const adminPathsModal = document.getElementById('adminPathsModal');
-    if (adminPathsModal) adminPathsModal.classList.remove('hidden');
-  } else {
-    const leaderboardModal = document.getElementById('leaderboardModal');
-    if (leaderboardModal) leaderboardModal.classList.remove('hidden');
+  // Restore all previously visible overlays/modals
+  if (window.replayHiddenOverlays) {
+    window.replayHiddenOverlays.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+    });
+    window.replayHiddenOverlays = null;
+  }
+  
+  // Restore appContainer visibility
+  if (window.replayAppContainerWasHidden) {
+    const appContainer = document.getElementById('appContainer');
+    if (appContainer) appContainer.classList.add('hidden');
   }
 };
 
@@ -4650,6 +4672,7 @@ function getUserIcon(username) {
     '영기': '🍠',
     '조씨': '🗡️',
     '앵웅': '🚬',
+    '톰토': '🍅',
     '관리자': '🛡️'
   };
   return icons[username] || '🤖';
