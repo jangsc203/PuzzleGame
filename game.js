@@ -3851,6 +3851,30 @@ const DB_OBJECT_ID = '9e762e1a';
 const DB_EDIT_KEY = 'e1604ec46cb395e7662360f0a8e88b85ac38ac5a1681e23d2180a8aee6f321f7';
 const CORS_PROXY_URL = 'https://solitary-frog-b23f.jangsc203.workers.dev/';
 
+// Admin utility: directly patch any field on a player's stage record
+// Usage: await adminPatchRecord('조씨', 7, { retries: 30, clearTime: 1127, moves: 73 })
+window.adminPatchRecord = async function(username, stageIdx, fields) {
+  const raw = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`)}`);
+  const obj = await raw.json();
+  const dbData = obj.data || {};
+  const key = String(stageIdx);
+  if (!dbData[username]) { console.error('유저 없음:', username); return; }
+  if (!dbData[username][key] && !dbData[username][stageIdx]) { console.error('스테이지 기록 없음:', stageIdx); return; }
+  const recKey = dbData[username][key] !== undefined ? key : stageIdx;
+  Object.assign(dbData[username][recKey], fields);
+  const res = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-Edit-Key': DB_EDIT_KEY },
+    body: JSON.stringify({ name: 'RunicDungeonLeaderboard', data: dbData })
+  });
+  if (res.ok) {
+    console.log(`✅ 수정 완료! ${username} 스테이지 ${stageIdx}:`, dbData[username][recKey]);
+    alert(`✅ ${username} 스테이지 ${stageIdx} 수정 완료!\n` + JSON.stringify(fields, null, 2));
+  } else {
+    console.error('PATCH 실패:', res.status);
+  }
+};
+
 async function uploadUserRecordsCloud(username) {
   try {
     const userRecords = {};
@@ -4547,18 +4571,10 @@ async function resetStageStarsOnly(username, stageIdx) {
     
     if (putRes.ok) {
       alert(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 별 획득이 초기화되었습니다.\n(시간/시도 횟수는 유지됩니다)`);
-      // Also zero the local star cache for this stage if it's the current user
+      // Remove local cache so HUD AP also disappears for current user
       const currentUser = localStorage.getItem('runic_dungeon_user') || '';
       if (username === currentUser) {
-        const localKey = `runic_dungeon_best_record_${stageIdx}`;
-        const saved = localStorage.getItem(localKey);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            parsed.stars = 0;
-            localStorage.setItem(localKey, JSON.stringify(parsed));
-          } catch {}
-        }
+        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
         updateRecordHUD();
       }
       showAdminPathsModal();
@@ -6186,7 +6202,6 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
   if (!tbody) return;
   tbody.innerHTML = '';
   
-  let prevCleared = true;
   
   DEFAULT_LEVELS.forEach((lvl, idx) => {
     const ch = lvl.chapter !== undefined ? lvl.chapter : 0;
@@ -6196,27 +6211,6 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
     
     const record = userRecords[idx];
     
-    let isUnlocked = false;
-    if (idx === 0) {
-      isUnlocked = true;
-    } else {
-      isUnlocked = prevCleared;
-    }
-    
-    if (!isUnlocked) {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td style="opacity: 0.5; font-family: var(--font-body);">${displayStr} (${lvl.name})</td>
-        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
-        <td style="color: var(--text-muted); font-family: var(--font-body);">시도 없음 (잠김)</td>
-        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
-        <td style="font-family: var(--font-body);">-</td>
-        <td style="font-family: var(--font-body);">-</td>
-      `;
-      tbody.appendChild(row);
-      prevCleared = false;
-      return;
-    }
     
     const row = document.createElement('tr');
     if (record) {
@@ -6237,7 +6231,6 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
           <button onclick="window.deleteStageRecordAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 6px; font-size: 0.68rem; background: rgba(255,23,68,0.2); border: 1px solid rgba(255,23,68,0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드</button>
         </td>
       `;
-      prevCleared = true;
     } else {
       row.innerHTML = `
         <td style="font-family: var(--font-body);"><span style="color: #ff9100; font-weight: bold;">${displayStr}</span> (${lvl.name})</td>
@@ -6247,7 +6240,6 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
         <td style="font-family: var(--font-body);">-</td>
         <td style="font-family: var(--font-body);">-</td>
       `;
-      prevCleared = false;
     }
     
     tbody.appendChild(row);
@@ -6300,11 +6292,10 @@ window.resetStageStarsOnlyAndRefreshTable = async function(username, stageIdx) {
     });
     if (putRes.ok) {
       alert(`${getLevelDisplayNumber(stageIdx)} 별 획득이 초기화되었습니다.\n(시간/시도 횟수는 유지됩니다)`);
+      // Remove local cache so HUD AP also disappears for current user
       const currentUser = localStorage.getItem('runic_dungeon_user') || '';
       if (username === currentUser) {
-        const localKey = `runic_dungeon_best_record_${stageIdx}`;
-        const saved = localStorage.getItem(localKey);
-        if (saved) { try { const p = JSON.parse(saved); p.stars = 0; localStorage.setItem(localKey, JSON.stringify(p)); } catch {} }
+        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
         updateRecordHUD();
       }
       showAdminUserStageMenu(username, dbData[username] || {});
