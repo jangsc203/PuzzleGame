@@ -4361,10 +4361,7 @@ async function showAdminPathsModal() {
           card.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold;">
               <span style="color: #00e5ff;">${getLevelDisplayNumber(stageIdx)}</span>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="color: #ffea00; font-size: 0.85rem;">★ ${rec.stars}</span>
-                <button onclick="window.deleteStageRecord('${window.adminPathsSelectedUser}', ${stageIdx})" class="btn btn-danger" style="margin: 0; padding: 3px 8px; font-size: 0.7rem; background: #ff1744; border: none; cursor: pointer; border-radius: 4px; color: #fff; line-height: 1.2;" title="이 스테이지 기록 삭제">기록 삭제</button>
-              </div>
+              <span style="color: #ffea00; font-size: 0.85rem;">★ ${rec.stars}</span>
             </div>
             <div style="font-size: 0.75rem; color: rgba(255,255,255,0.6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${stageName}">
               ${stageName}
@@ -4373,6 +4370,10 @@ async function showAdminPathsModal() {
               이동: <span style="color: #00e676; font-weight: bold;">${rec.moves}</span> | 시도: <span style="color: #ff9100; font-weight: bold;">${retryCount}회</span>${rec.clearTime !== undefined ? ` | 시간: <span style="color: #00e5ff; font-weight: bold;">${formatTime(rec.clearTime)}</span>` : ''}
             </div>
             <button onclick="window.startReplay('${window.adminPathsSelectedUser}', ${stageIdx}, '${rec.path}')" class="btn btn-secondary" style="margin-top: 6px; padding: 4px 8px; font-size: 0.75rem; width: 100%; border: none; background: rgba(0, 229, 255, 0.2); color: #fff; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 229, 255, 0.4)'" onmouseout="this.style.background='rgba(0, 229, 255, 0.2)'">▶ 재생</button>
+            <div style="display: flex; gap: 5px; margin-top: 5px;">
+              <button onclick="window.resetStageStarsOnly('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 160, 0, 0.25); border: 1px solid rgba(255, 160, 0, 0.5); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; line-height: 1.3;" title="별 획득만 0으로 초기화 (시간/시도횟수 유지)">⭐ 별 초기화</button>
+              <button onclick="window.deleteStageRecord('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 23, 68, 0.25); border: 1px solid rgba(255, 23, 68, 0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold; line-height: 1.3;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드 리셋</button>
+            </div>
           `;
           grid.appendChild(card);
         }
@@ -4502,6 +4503,75 @@ async function deleteStageRecord(username, stageIdx) {
 }
 
 window.deleteStageRecord = deleteStageRecord;
+
+// Reset only the stars for a stage record (keep time and retry count)
+async function resetStageStarsOnly(username, stageIdx) {
+  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 스테이지\n별 획득만 0으로 초기화합니다.\n(진행 시간과 시도 횟수는 유지됩니다)\n\n계속하시겠습니까?`)) {
+    return;
+  }
+  
+  try {
+    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
+    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    const res = await fetch(proxiedUrl);
+    let dbData = {};
+    if (res.ok) {
+      const obj = await res.json();
+      dbData = obj.data || {};
+    } else {
+      alert('기록을 불러오는 데 실패했습니다.');
+      return;
+    }
+    
+    // Only zero out the stars; keep everything else intact
+    if (dbData[username] && dbData[username][stageIdx]) {
+      dbData[username][stageIdx].stars = 0;
+    } else {
+      alert('해당 기록을 찾을 수 없습니다.');
+      return;
+    }
+    
+    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
+    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
+    const putRes = await fetch(proxiedPutUrl, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Edit-Key': DB_EDIT_KEY
+      },
+      body: JSON.stringify({
+        name: "RunicDungeonLeaderboard",
+        data: dbData
+      })
+    });
+    
+    if (putRes.ok) {
+      alert(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 별 획득이 초기화되었습니다.\n(시간/시도 횟수는 유지됩니다)`);
+      // Also zero the local star cache for this stage if it's the current user
+      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+      if (username === currentUser) {
+        const localKey = `runic_dungeon_best_record_${stageIdx}`;
+        const saved = localStorage.getItem(localKey);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            parsed.stars = 0;
+            localStorage.setItem(localKey, JSON.stringify(parsed));
+          } catch {}
+        }
+        updateRecordHUD();
+      }
+      showAdminPathsModal();
+    } else {
+      alert('별 초기화 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    }
+  } catch (e) {
+    console.error('Error resetting stage stars:', e);
+    alert('서버 통신 중 오류가 발생했습니다.');
+  }
+}
+
+window.resetStageStarsOnly = resetStageStarsOnly;
 
 // Replay Playback Engine Functions
 window.startReplay = function(username, stageIdx, pathString) {
@@ -6141,6 +6211,7 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
         <td style="color: var(--text-muted); font-family: var(--font-body);">시도 없음 (잠김)</td>
         <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
         <td style="font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body);">-</td>
       `;
       tbody.appendChild(row);
       prevCleared = false;
@@ -6161,6 +6232,10 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
         <td style="font-family: var(--font-body);">
           <button onclick="window.startReplay('${targetUser}', ${idx}, '${record.path}')" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">▶ 재생</button>
         </td>
+        <td style="font-family: var(--font-body); white-space: nowrap;">
+          <button onclick="window.resetStageStarsOnlyAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 6px; font-size: 0.68rem; background: rgba(255,160,0,0.2); border: 1px solid rgba(255,160,0,0.5); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; margin-right: 3px;" title="별 획득만 0으로 초기화 (시간/시도횟수 유지)">⭐ 별</button>
+          <button onclick="window.deleteStageRecordAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 6px; font-size: 0.68rem; background: rgba(255,23,68,0.2); border: 1px solid rgba(255,23,68,0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드</button>
+        </td>
       `;
       prevCleared = true;
     } else {
@@ -6170,6 +6245,7 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
         <td style="font-family: var(--font-body);">시도 중</td>
         <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
         <td style="font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body);">-</td>
       `;
       prevCleared = false;
     }
@@ -6177,3 +6253,61 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
     tbody.appendChild(row);
   });
 }
+
+// Wrapper: hard reset a stage and refresh the table view
+window.deleteStageRecordAndRefreshTable = async function(username, stageIdx) {
+  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 기록을 완전히 삭제하시겠습니까?\n(시간, 시도 횟수, 별 획득 모두 초기화)`)) return;
+  try {
+    const res = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`)}`);
+    let dbData = {};
+    if (res.ok) { const obj = await res.json(); dbData = obj.data || {}; }
+    else { alert('기록을 불러오는 데 실패했습니다.'); return; }
+    if (dbData[username] && dbData[username][stageIdx]) {
+      delete dbData[username][stageIdx];
+    }
+    const putRes = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Edit-Key': DB_EDIT_KEY },
+      body: JSON.stringify({ name: 'RunicDungeonLeaderboard', data: dbData })
+    });
+    if (putRes.ok) {
+      alert(`${getLevelDisplayNumber(stageIdx)} 기록이 삭제되었습니다.`);
+      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+      if (username === currentUser) {
+        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
+        localStorage.removeItem(`runic_dungeon_retry_count_${username}_${stageIdx}`);
+        localStorage.removeItem(`runic_dungeon_play_time_${username}_${stageIdx}`);
+        updateRecordHUD();
+      }
+      showAdminUserStageMenu(username, dbData[username] || {});
+    } else { alert('삭제 중 오류가 발생했습니다.'); }
+  } catch(e) { console.error(e); alert('서버 통신 오류'); }
+};
+
+// Wrapper: reset only stars and refresh the table view
+window.resetStageStarsOnlyAndRefreshTable = async function(username, stageIdx) {
+  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 별 획득만 0으로 초기화하시겠습니까?\n(시간과 시도 횟수는 유지)`)) return;
+  try {
+    const res = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`)}`);
+    let dbData = {};
+    if (res.ok) { const obj = await res.json(); dbData = obj.data || {}; }
+    else { alert('기록을 불러오는 데 실패했습니다.'); return; }
+    if (dbData[username] && dbData[username][stageIdx]) {
+      dbData[username][stageIdx].stars = 0;
+    } else { alert('해당 기록을 찾을 수 없습니다.'); return; }
+    const putRes = await fetch(`${CORS_PROXY_URL}?url=${encodeURIComponent(`https://jsonhosting.com/api/json/${DB_OBJECT_ID}`)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Edit-Key': DB_EDIT_KEY },
+      body: JSON.stringify({ name: 'RunicDungeonLeaderboard', data: dbData })
+    });
+    if (putRes.ok) {
+      alert(`${getLevelDisplayNumber(stageIdx)} 별 획득이 초기화되었습니다.\n(시간/시도 횟수는 유지됩니다)`);
+      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+      if (username === currentUser) {
+        const localKey = `runic_dungeon_best_record_${stageIdx}`;
+        const saved = localStorage.getItem(localKey);
+        if (saved) { try { const p = JSON.parse(saved); p.stars = 0; localStorage.setItem(localKey, JSON.stringify(p)); } catch {} }
+        updateRecordHUD();
+      }
+      showAdminUserStageMenu(username, dbData[username] || {});
+    } else { alert('별 초기화 중 오류가 발생했습니다.'); }
+  } catch(e) { console.error(e); alert('서버 통신 오류'); }
+};
