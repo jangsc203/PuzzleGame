@@ -258,6 +258,7 @@ const DEFAULT_LEVELS = [
       { type: "box", x: 5, y: 4 },
       { type: "box", x: 7, y: 4 },
       { type: "box", x: 8, y: 4 },
+      { type: "box", x: 11, y: 4 },
       { type: "box", x: 12, y: 4 },
       { type: "box", x: 13, y: 4 },
       // Row 5 (y=5)
