@@ -3868,8 +3868,19 @@ window.adminPatchRecord = async function(username, stageIdx, fields) {
     body: JSON.stringify({ name: 'RunicDungeonLeaderboard', data: dbData })
   });
   if (res.ok) {
-    console.log(`✅ 수정 완료! ${username} 스테이지 ${stageIdx}:`, dbData[username][recKey]);
-    alert(`✅ ${username} 스테이지 ${stageIdx} 수정 완료!\n` + JSON.stringify(fields, null, 2));
+    console.log('✅ 수정 완료! ' + username + ' 스테이지 ' + stageIdx, dbData[username][recKey]);
+    // Also update localStorage if the patched user is currently logged in
+    const currentUser = localStorage.getItem('runic_dungeon_user') || '';
+    if (username === currentUser) {
+      const updatedRec = dbData[username][recKey];
+      if (updatedRec && parseInt(updatedRec.stars, 10) > 0) {
+        localStorage.setItem('runic_dungeon_best_record_' + stageIdx, JSON.stringify(updatedRec));
+      } else {
+        localStorage.removeItem('runic_dungeon_best_record_' + stageIdx);
+      }
+      updateRecordHUD();
+    }
+    alert('✅ ' + username + ' 스테이지 ' + stageIdx + ' 수정 완료!\n' + JSON.stringify(fields, null, 2));
   } else {
     console.error('PATCH 실패:', res.status);
   }
@@ -3955,7 +3966,8 @@ async function syncUserRecordsFromCloud(username) {
       
       if (userRecords) {
         DEFAULT_LEVELS.forEach((_, idx) => {
-          if (userRecords[idx]) {
+          if (userRecords[idx] && parseInt(userRecords[idx].stars, 10) > 0) {
+            // Only restore records that have at least 1 star (별 초기화된 기록 제외)
             localStorage.setItem(`runic_dungeon_best_record_${idx}`, JSON.stringify(userRecords[idx]));
           } else {
             localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
@@ -4034,7 +4046,7 @@ async function showLeaderboardModal(chapterIdx = null) {
         if (lvl.locked) return;
 
         const rec = userRecords[idx];
-        if (rec) {
+        if (rec && parseInt(rec.stars, 10) > 0) {
           totalStars += parseInt(rec.stars, 10) || 0;
           const retryVal = parseInt(rec.retries || 1, 10) || 1;
           totalRetries += retryVal;
@@ -4130,7 +4142,7 @@ async function showLeaderboardModal(chapterIdx = null) {
         hasDetails = true;
         const displayNum = getLevelDisplayNumber(idx);
         const rec = stat.userRecords[idx];
-        if (rec) {
+        if (rec && parseInt(rec.stars, 10) > 0) {
           const starsVal = parseInt(rec.stars, 10) || 0;
           const retryVal = parseInt(rec.retries || 1, 10) || 1;
           const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
