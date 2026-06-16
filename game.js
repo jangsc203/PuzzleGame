@@ -1049,6 +1049,8 @@ function resizeCanvas() {
 
   canvas.width = levelWidth * tileSize;
   canvas.height = levelHeight * tileSize;
+  canvas.style.width = `${levelWidth * tileSize}px`;
+  canvas.style.height = `${levelHeight * tileSize}px`;
   canvas.style.aspectRatio = `${levelWidth} / ${levelHeight}`;
   
   offsetX = (canvas.width - levelWidth * tileSize) / 2;
