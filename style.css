@@ -1261,9 +1261,10 @@ body {
   }
   
   .level-bar {
+    display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    justify-content: center !important;
+    justify-content: space-between !important;
     gap: 8px !important;
     padding: 6px 10px !important;
     margin: 6px auto 0 auto !important;
@@ -1272,12 +1273,10 @@ body {
   }
 
   .level-select-wrapper {
-    width: 100% !important;
+    flex: 1 !important;
+    min-width: 0 !important;
     display: flex !important;
-    flex-direction: row !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    gap: 8px !important;
   }
 
   .level-select-label {
@@ -1285,27 +1284,31 @@ body {
   }
 
   #levelSelect {
-    flex-grow: 1 !important;
-    max-width: 70% !important;
-    min-height: 36px !important;
-    padding: 6px 10px !important;
-    font-size: 0.85rem !important;
+    width: 100% !important;
+    min-height: 38px !important;
+    padding: 6px 8px !important;
+    font-size: 0.82rem !important;
+    border-radius: 6px !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    border: 1px solid var(--border-glass) !important;
+    color: #fff !important;
+  }
+
+  #btnPlayBackToMenu {
+    flex-shrink: 0 !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 0 10px !important;
+    font-size: 0.8rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    margin: 0 !important;
   }
 
   #btnBackToMenu {
-    width: 28% !important;
-    height: 36px !important;
-    padding: 0 8px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 0.85rem !important;
-    margin: 0 !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid var(--border-glass) !important;
-    border-radius: 6px !important;
-    color: #fff !important;
-    cursor: pointer !important;
+    display: none !important;
   }
 
   .level-info {
@@ -1774,6 +1777,7 @@ body {
   padding: 20px;
   opacity: 1;
   transition: opacity 0.3s ease;
+  overflow-x: hidden;
 }
 
 .stage-select-overlay.hidden {
@@ -1891,6 +1895,10 @@ body {
   line-height: 1.4;
   text-align: center;
   width: 100%;
+  height: 2.8rem; /* 고정 높이 지정 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-stars {
@@ -1932,6 +1940,7 @@ body {
   padding: 20px;
   opacity: 1;
   transition: opacity 0.3s ease;
+  overflow-x: hidden;
 }
 
 .chapter-select-overlay.hidden {
@@ -1985,17 +1994,18 @@ body {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  padding: 25px 20px;
+  padding: 20px 15px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  min-height: 150px; /* 고정 최소 높이 축소 설정 */
 }
 
 .chapter-card:not(.locked):hover {
@@ -2022,9 +2032,13 @@ body {
 }
 
 .chapter-badge.locked {
-  background: rgba(255, 23, 68, 0.1);
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(255, 23, 68, 0.15);
   border: 1px solid var(--color-danger);
   color: var(--color-danger);
+  margin-bottom: 0;
 }
 
 .chapter-num {
@@ -2121,6 +2135,7 @@ body {
     max-height: 92vh !important;
     max-height: 92dvh !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important; /* 가로 스크롤 제거 */
     margin: auto !important;
   }
 
@@ -2217,19 +2232,30 @@ body {
 
   /* Leaderboard Table styling */
   .leaderboard-table {
-    font-size: 0.7rem !important;
+    font-size: 0.65rem !important;
+    width: 100% !important;
+    table-layout: auto !important;
   }
 
   .leaderboard-table th, 
   .leaderboard-table td {
-    padding: 6px 4px !important;
-    white-space: nowrap !important;
+    padding: 6px 3px !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+  }
+
+  /* Reduce button sizes inside table for mobile */
+  .leaderboard-table td button {
+    padding: 2px 4px !important;
+    font-size: 0.65rem !important;
+    min-height: auto !important;
+    line-height: 1.1 !important;
   }
 
   .admin-path-list {
-    font-size: 0.7rem !important;
-    padding: 10px !important;
-    max-height: 120px !important;
+    font-size: 0.65rem !important;
+    padding: 6px !important;
+    max-height: 100px !important;
   }
 
   /* Modal/Overlay Footer Buttons */
@@ -2648,6 +2674,47 @@ body {
     padding: 20px 15px !important;
   }
 
+  .mode-select-box {
+    padding: 30px 15px !important;
+    margin-top: 50px !important;
+    position: relative !important;
+  }
+
+  .mode-select-logo h2 {
+    font-size: 1.5rem !important;
+    word-break: keep-all;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding-right: 30px; /* Space for the inside update history button */
+  }
+
+  .screen-logout-btn {
+    top: 10px !important;
+    right: 10px !important;
+  }
+
+  .chapter-select-box,
+  .stage-select-box {
+    padding: 60px 15px 30px 15px !important; /* Top padding increased to push contents down */
+    position: relative !important;
+  }
+
+  .card-corner-buttons {
+    top: 15px !important;
+    right: 15px !important;
+  }
+
+  .chapter-select-logo h2,
+  .stage-select-logo h2 {
+    font-size: 1.5rem !important;
+    word-break: keep-all;
+    text-align: center;
+    padding-right: 0 !important;
+    margin-top: 10px;
+  }
+
   .editor-container {
     width: 98vw !important;
     height: 95vh !important;
@@ -2669,6 +2736,65 @@ body {
     width: 100% !important;
     height: auto !important;
     flex-grow: 1 !important;
+  }
+
+  /* 모바일 클리어 화면(성공/실패) 크기 축소 오버라이드 */
+  .overlay-content {
+    gap: 10px !important;
+  }
+
+  .overlay-content h2 {
+    font-size: 1.8rem !important; /* VICTORY / DEFEAT 크기 축소 */
+    letter-spacing: 2px !important;
+  }
+
+  .overlay-content p {
+    font-size: 0.85rem !important; /* 설명 문구 크기 축소 */
+    margin: 5px 0 !important;
+  }
+
+  .overlay-stars-display {
+    font-size: 2.2rem !important; /* 노란색 별 아이콘 크기 축소 */
+    gap: 10px !important;
+    margin: 4px 0 !important;
+  }
+
+  .overlay-buttons {
+    gap: 8px !important;
+    width: 90% !important;
+  }
+
+  .overlay-buttons .btn {
+    padding: 6px 10px !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* 모바일 재상영(Replay) 안내 창 크기/위치 최적화 */
+  .replay-overlay {
+    top: 5px !important;
+    left: 5px !important;
+    right: 5px !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+    background: rgba(10, 15, 30, 0.65) !important; /* 반투명하게 변경 */
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.25) !important;
+    border-width: 1px !important;
+  }
+
+  /* 모험가 이름 및 스테이지명 텍스트 숨김 처리 */
+  .replay-overlay #replayInfo {
+    display: none !important;
+  }
+
+  /* 글씨 및 진행률 폰트 소폭 축소 */
+  .replay-overlay span {
+    font-size: 0.72rem !important;
+  }
+
+  /* 재생 중지 버튼 작게 조절 */
+  .replay-overlay button#btnStopReplay {
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
   }
 }
 

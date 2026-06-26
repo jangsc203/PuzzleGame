@@ -74,13 +74,6 @@
     </section>
 
     <section class="game-playground">
-      <!-- 모바일 전용 스테이지별 최고 기록 판넬 -->
-      <div class="mobile-record-card record-card">
-        <span class="hud-label">스테이지별 최고 기록</span>
-        <div class="record-list" id="mobileRecordList">
-          <!-- JS를 통해 동적 데이터가 주입됩니다. -->
-        </div>
-      </div>
 
       <div class="hud-panel left-hud">
 
@@ -163,7 +156,7 @@
           </div>
         </div>
         <!-- 플레이 재상영 오버레이 -->
-        <div id="replayOverlay" class="replay-overlay hidden" style="position: absolute; top: 20px; left: 20px; right: 20px; background: rgba(10, 15, 30, 0.95); border: 2px solid var(--color-primary); border-radius: 12px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 0 25px rgba(0, 229, 255, 0.45); backdrop-filter: blur(10px); z-index: 1000; color: #fff; font-family: var(--font-body); font-size: 0.85rem;">
+        <div id="replayOverlay" class="replay-overlay hidden" style="position: absolute; top: 20px; left: 20px; right: 20px; background: rgba(10, 15, 30, 0.65); border: 2px solid var(--color-primary); border-radius: 12px; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 0 25px rgba(0, 229, 255, 0.45); backdrop-filter: blur(10px); z-index: 1000; color: #fff; font-family: var(--font-body); font-size: 0.85rem;">
           <div style="display: flex; align-items: center; gap: 12px;">
             <span style="color: var(--color-primary); font-weight: bold; display: flex; align-items: center; gap: 8px;">
               <span style="display: inline-block; width: 10px; height: 10px; background: #00e676; border-radius: 50%; animation: pulse 1s infinite alternate;"></span>
@@ -173,6 +166,14 @@
             <span id="replayStepText" style="color: #ffea00; font-family: monospace; font-size: 0.85rem; background: rgba(255, 255, 255, 0.1); padding: 3px 8px; border-radius: 4px; font-weight: bold; letter-spacing: 1px;">[0 / 0]</span>
           </div>
           <button id="btnStopReplay" class="btn btn-danger" style="margin: 0; padding: 6px 14px; font-size: 0.8rem; border: none; cursor: pointer; border-radius: 6px; background: #ff1744; box-shadow: 0 0 10px rgba(255, 23, 68, 0.4); font-weight: bold; color: white;">재생 중지 (ESC)</button>
+        </div>
+      </div>
+
+      <!-- 모바일 전용 스테이지별 최고 기록 판넬 (맨 아래 공간으로 이동) -->
+      <div class="mobile-record-card record-card">
+        <span class="hud-label">스테이지별 최고 기록</span>
+        <div class="record-list" id="mobileRecordList">
+          <!-- JS를 통해 동적 데이터가 주입됩니다. -->
         </div>
       </div>
     </section>
@@ -337,7 +338,7 @@
         <div class="chapter-card" id="chapterCard2">
           <div class="chapter-num">제 1장</div>
           <div class="chapter-name">📦 박스 창고</div>
-          <div class="chapter-desc">촘촘한 상자 장벽을 넘나들며 목표지점에 상자를 옮기세요</div>
+          <div class="chapter-desc">촘촘한 상자를 넘나들며 목표지점에 상자를 옮기세요</div>
         </div>
         <!-- 챕터 2 (출시 예정 / 잠금) -->
         <div class="chapter-card locked" id="chapterCard3">
@@ -460,9 +461,13 @@
         <line x1="21" y1="12" x2="9" y2="12" />
       </svg>
     </button>
-    <div class="mode-select-box glass-card">
+    <div class="mode-select-box glass-card" style="position: relative;">
+      <!-- 우측 상단 업데이트 기록 버튼 (카드 기준 우측 상단 빨간 박스 위치 배치) -->
+      <button id="btnUpdateHistory" class="icon-btn tooltip tooltip-bottom" data-tooltip="업데이트 기록" style="position: absolute; top: 20px; right: 20px; background: rgba(0, 176, 255, 0.12); border: 1px solid rgba(0, 176, 255, 0.3); color: var(--color-primary); width: 42px; height: 42px; border-radius: 50%;">
+        <span class="icon">📝</span>
+      </button>
       <div class="mode-select-logo">
-        <h2>🎮 모험 모드 선택</h2>
+        <h2 style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;"><span class="icon">🎮</span> 모험 모드 선택</h2>
         <p class="mode-select-subtitle">원하는 모드를 선택하여 모험을 시작하세요.</p>
       </div>
       <div class="mode-grid">
@@ -482,6 +487,22 @@
           <div class="mode-name">모험가 경로</div>
           <div class="mode-desc">모험가들의 캠페인 플레이 기록, 시도 횟수, 클리어 타임을 추적하고 상세 경로를 재생합니다.</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 업데이트 기록 모달 -->
+  <div class="modal hidden" id="updateHistoryModal">
+    <div class="modal-content glass-card">
+      <div class="modal-header">
+        <h2>📝 업데이트 기록 (Update History)</h2>
+        <button id="btnUpdateHistoryClose" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body scrollable-y" id="updateHistoryModalBody">
+        <div style="text-align: center; padding: 20px; color: var(--text-muted);">업데이트 기록을 불러오는 중...</div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnUpdateHistoryConfirm" class="btn btn-primary">확인</button>
       </div>
     </div>
   </div>
@@ -761,6 +782,6 @@
   </div>
 
   <script src="levels.js?v=40"></script>
-  <script src="game.js?v=142"></script>
+  <script src="game.js?v=144"></script>
 </body>
 </html>

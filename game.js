@@ -3,7 +3,6 @@
    ========================================================================== */
 
 // Audio Synthesizer via Web Audio API
-// Audio Synthesizer via Web Audio API
 class SoundSynth {
   constructor() {
     this.ctx = null;
@@ -569,6 +568,27 @@ function initGame() {
     });
   }
 
+  // Bind Update History UI Listeners
+  const btnUpdateHistory = document.getElementById('btnUpdateHistory');
+  if (btnUpdateHistory) {
+    btnUpdateHistory.addEventListener('click', () => {
+      sound.init();
+      showUpdateHistoryModal();
+    });
+  }
+  const btnUpdateHistoryClose = document.getElementById('btnUpdateHistoryClose');
+  if (btnUpdateHistoryClose) {
+    btnUpdateHistoryClose.addEventListener('click', () => {
+      document.getElementById('updateHistoryModal').classList.add('hidden');
+    });
+  }
+  const btnUpdateHistoryConfirm = document.getElementById('btnUpdateHistoryConfirm');
+  if (btnUpdateHistoryConfirm) {
+    btnUpdateHistoryConfirm.addEventListener('click', () => {
+      document.getElementById('updateHistoryModal').classList.add('hidden');
+    });
+  }
+
   // Bind Admin Paths UI Listeners
   const openAdminPathsModal = () => {
     showAdminPathsModal();
@@ -843,6 +863,7 @@ function saveCurrentPlayTimeOnExit() {
     const alreadyThreeStars = best && best.stars === 3;
     if (!alreadyThreeStars && window.stagePlayTime > 0) {
       localStorage.setItem(`runic_dungeon_play_time_${user}_${currentLevelIdx}`, Math.round(window.stagePlayTime));
+      uploadUserRecordsCloud(user);
     }
   }
 }
@@ -871,6 +892,8 @@ function loadLevel(index, customLevelData = null, isRestart = false) {
           localStorage.setItem(`runic_dungeon_retry_count_${user}_${index}`, retries);
         }
       }
+      // 시도 횟수가 변경되었으므로 클라우드에 비동기로 업로드 (안 깨졌어도 보관용)
+      uploadUserRecordsCloud(user);
     }
   }
 
@@ -2115,6 +2138,15 @@ function gameLoop() {
       if (user && !currentCustomLevelData) {
         if (currSec !== prevSec) {
           localStorage.setItem(`runic_dungeon_play_time_${user}_${currentLevelIdx}`, Math.round(window.stagePlayTime));
+          
+          // 백업용: 30초마다 클라우드에 비동기로 플레이 시간 임시 백업 (부담 방지)
+          if (!window.lastCloudBackupTime) {
+            window.lastCloudBackupTime = now;
+          }
+          if (now - window.lastCloudBackupTime > 30000) {
+            window.lastCloudBackupTime = now;
+            uploadUserRecordsCloud(user);
+          }
         }
       }
     }
@@ -2444,6 +2476,7 @@ function drawTile(x, y, type) {
 
     case 'D': // Door (Locked / Unlocked Vault Gate)
       const open = isDoorOpen(x, y);
+      const dScale = tileSize / 48;
       if (open) {
         // Open door frame background (greenish transparent glow)
         ctx.fillStyle = 'rgba(0, 230, 118, 0.04)';
@@ -2454,19 +2487,19 @@ function drawTile(x, y, type) {
 
         // Open door panels pushed to the left and right sides
         ctx.fillStyle = '#1b2631';
-        ctx.fillRect(px + 3, py + 3, tileSize/6, tileSize - 6);
-        ctx.fillRect(px + tileSize - 3 - tileSize/6, py + 3, tileSize/6, tileSize - 6);
+        ctx.fillRect(px + 3 * dScale, py + 3 * dScale, tileSize/6, tileSize - 6 * dScale);
+        ctx.fillRect(px + tileSize - 3 * dScale - tileSize/6, py + 3 * dScale, tileSize/6, tileSize - 6 * dScale);
         ctx.strokeStyle = 'rgba(0, 230, 118, 0.4)';
-        ctx.strokeRect(px + 3, py + 3, tileSize/6, tileSize - 6);
-        ctx.strokeRect(px + tileSize - 3 - tileSize/6, py + 3, tileSize/6, tileSize - 6);
+        ctx.strokeRect(px + 3 * dScale, py + 3 * dScale, tileSize/6, tileSize - 6 * dScale);
+        ctx.strokeRect(px + tileSize - 3 * dScale - tileSize/6, py + 3 * dScale, tileSize/6, tileSize - 6 * dScale);
 
-        // Unlocked padlock icon in the center (green, shackle popped open)
+        // Unlocked padlock icon in the center
         ctx.save();
         ctx.translate(px + tileSize/2, py + tileSize/2);
 
         // Lock shackle (popped open and rotated)
         ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.5 * dScale;
         ctx.beginPath();
         ctx.arc(-tileSize/16, -tileSize/8, tileSize/8, Math.PI * 1.1, Math.PI * 0.1, false);
         ctx.stroke();
@@ -2474,11 +2507,11 @@ function drawTile(x, y, type) {
         // Lock body (green)
         ctx.fillStyle = '#1b2a22';
         ctx.strokeStyle = '#00e676';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * dScale;
         ctx.shadowColor = '#00e676';
-        ctx.shadowBlur = 4;
+        ctx.shadowBlur = 4 * dScale;
         ctx.beginPath();
-        ctx.roundRect(-tileSize/6, -tileSize/12, tileSize/3, tileSize/3.5, 4);
+        ctx.roundRect(-tileSize/6, -tileSize/12, tileSize/3, tileSize/3.5, 4 * dScale);
         ctx.fill();
         ctx.stroke();
         ctx.shadowBlur = 0;
@@ -2486,55 +2519,55 @@ function drawTile(x, y, type) {
         // Keyhole
         ctx.fillStyle = 'rgba(0, 230, 118, 0.6)';
         ctx.beginPath();
-        ctx.arc(0, tileSize/16, 2, 0, Math.PI * 2);
+        ctx.arc(0, tileSize/16, 2 * dScale, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
       } else {
         // Render heavy locked gate
         ctx.fillStyle = '#212a34'; // darker steel blue-gray
-        ctx.fillRect(px + 3, py + 3, tileSize - 6, tileSize - 6);
+        ctx.fillRect(px + 3 * dScale, py + 3 * dScale, tileSize - 6 * dScale, tileSize - 6 * dScale);
         ctx.strokeStyle = '#00b0ff'; // Neon blue border
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(px + 3, py + 3, tileSize - 6, tileSize - 6);
+        ctx.lineWidth = 2.5 * dScale;
+        ctx.strokeRect(px + 3 * dScale, py + 3 * dScale, tileSize - 6 * dScale, tileSize - 6 * dScale);
 
-        // Vertical split line showing double door panels
+        // Vertical split line
         ctx.strokeStyle = '#121921';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * dScale;
         ctx.beginPath();
-        ctx.moveTo(px + tileSize/2, py + 3);
-        ctx.lineTo(px + tileSize/2, py + tileSize - 3);
+        ctx.moveTo(px + tileSize/2, py + 3 * dScale);
+        ctx.lineTo(px + tileSize/2, py + tileSize - 3 * dScale);
         ctx.stroke();
 
-        // Horizontal panel ribs for mechanical look
+        // Horizontal panel ribs
         ctx.strokeStyle = 'rgba(0, 176, 255, 0.15)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5 * dScale;
         ctx.beginPath();
-        ctx.moveTo(px + 6, py + tileSize * 0.25);
-        ctx.lineTo(px + tileSize - 6, py + tileSize * 0.25);
-        ctx.moveTo(px + 6, py + tileSize * 0.75);
-        ctx.lineTo(px + tileSize - 6, py + tileSize * 0.75);
+        ctx.moveTo(px + 6 * dScale, py + tileSize * 0.25);
+        ctx.lineTo(px + tileSize - 6 * dScale, py + tileSize * 0.25);
+        ctx.moveTo(px + 6 * dScale, py + tileSize * 0.75);
+        ctx.lineTo(px + tileSize - 6 * dScale, py + tileSize * 0.75);
         ctx.stroke();
 
         // Padlock icon in the center
         ctx.save();
         ctx.translate(px + tileSize/2, py + tileSize/2);
 
-        // Lock shackle (loop) - red/orange indicating locked
+        // Lock shackle
         ctx.strokeStyle = '#ff1744';
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2.5 * dScale;
         ctx.beginPath();
         ctx.arc(0, -tileSize/10, tileSize/8, Math.PI, 0, false);
         ctx.stroke();
 
-        // Lock body (rounded rect)
+        // Lock body
         ctx.fillStyle = '#2c3e50';
         ctx.strokeStyle = '#ff1744';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * dScale;
         ctx.shadowColor = '#ff1744';
-        ctx.shadowBlur = 4;
+        ctx.shadowBlur = 4 * dScale;
         ctx.beginPath();
-        ctx.roundRect(-tileSize/6, -tileSize/12, tileSize/3, tileSize/3.5, 4);
+        ctx.roundRect(-tileSize/6, -tileSize/12, tileSize/3, tileSize/3.5, 4 * dScale);
         ctx.fill();
         ctx.stroke();
         ctx.shadowBlur = 0;
@@ -2542,13 +2575,13 @@ function drawTile(x, y, type) {
         // Keyhole inside padlock body
         ctx.fillStyle = '#ffea00';
         ctx.beginPath();
-        ctx.arc(0, tileSize/16, 2.5, 0, Math.PI * 2);
+        ctx.arc(0, tileSize/16, 2.5 * dScale, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(-1.5, tileSize/16);
-        ctx.lineTo(1.5, tileSize/16);
-        ctx.lineTo(2.5, tileSize/16 + 5);
-        ctx.lineTo(-2.5, tileSize/16 + 5);
+        ctx.moveTo(-1.5 * dScale, tileSize/16);
+        ctx.lineTo(1.5 * dScale, tileSize/16);
+        ctx.lineTo(2.5 * dScale, tileSize/16 + 5 * dScale);
+        ctx.lineTo(-2.5 * dScale, tileSize/16 + 5 * dScale);
         ctx.closePath();
         ctx.fill();
 
@@ -2817,12 +2850,13 @@ function drawTile(x, y, type) {
       ctx.textBaseline = 'middle';
       
       const numStr = type === 'C' ? '1' : '2';
-      ctx.font = `900 ${Math.max(16, tileSize * 0.32)}px 'Orbitron', sans-serif`;
+      const cScale = tileSize / 48;
+      ctx.font = `900 ${Math.max(12, tileSize * 0.38)}px 'Orbitron', sans-serif`;
 
       // 1. Draw thin black outline stroke first
       ctx.save();
       ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = 3.0 * cScale;
       ctx.shadowBlur = 0; // No neon glow on the black outline itself
       ctx.strokeText(numStr, px + tileSize/2, py + tileSize/2);
       ctx.restore();
@@ -2833,12 +2867,12 @@ function drawTile(x, y, type) {
         // Durability 1: Bright Orange-Red '1'
         ctx.fillStyle = '#ff3d00';
         ctx.shadowColor = '#ff3d00';
-        ctx.shadowBlur = 8 * pulseVal;
+        ctx.shadowBlur = 6 * cScale * pulseVal;
       } else {
         // Durability 2: Bright Lime Green '2'
         ctx.fillStyle = '#00e676';
         ctx.shadowColor = '#00e676';
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = 5 * cScale;
       }
       ctx.fillText(numStr, px + tileSize/2, py + tileSize/2);
       ctx.restore();
@@ -3039,7 +3073,9 @@ function drawBox(box) {
 
   const bx = box.animX * tileSize + tileSize/2;
   const by = box.animY * tileSize + tileSize/2;
-  const bSize = (tileSize - 10) * scale;
+  // 모바일(작은 타일)일 경우 여백을 2px로 조절하여 각 방향당 1px씩의 깔끔한 여백을 둠
+  const margin = tileSize < 36 ? 2 : 10;
+  const bSize = (tileSize - margin) * scale;
 
   ctx.save();
   ctx.translate(bx, by);
@@ -3147,7 +3183,7 @@ function drawPlayer() {
   ctx.roundRect(-r * 0.60, -r * 0.73, r * 1.20, r * 0.76, r * 0.26 * scale);
   ctx.fill();
 
-  // 7. Glowing Visor Eyes (Expressionless/neutral circular eyes) & Gentle Smile Mouth
+  // 7. Glowing Visor Eyes & Gentle Smile Mouth
   ctx.strokeStyle = '#00e5ff';
   ctx.fillStyle = '#00e5ff';
   ctx.lineCap = 'round';
@@ -3160,22 +3196,23 @@ function drawPlayer() {
 
   const eyeY = -r * 0.42;
   const eyeSpacing = r * 0.28;
-  const eyeR = 3.5 * scale;
+  // 타일 크기 36 이하(모바일 환경)일 경우 캐릭터 눈 크기(eyeR)를 2.75로 축소, PC는 기존 3.5 유지
+  const eyeR = (tileSize < 36 ? 2.75 : 3.5) * scale;
 
-  // Left Eye (Circular for neutral expression)
+  // Left Eye
   ctx.beginPath();
   ctx.arc(-eyeSpacing + lookX, eyeY, eyeR, 0, Math.PI * 2);
   ctx.fill();
 
-  // Right Eye (Circular for neutral expression)
+  // Right Eye
   ctx.beginPath();
   ctx.arc(eyeSpacing + lookX, eyeY, eyeR, 0, Math.PI * 2);
   ctx.fill();
 
-  // Subtle Smile Mouth (thin line creating a gentle smiling expression on the visor screen)
-  ctx.lineWidth = 1.5 * scale;
+  // Subtle Smile Mouth
+  ctx.lineWidth = 1.2 * scale;
   ctx.beginPath();
-  ctx.arc(lookX, eyeY + 7 * scale, 2.5 * scale, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.arc(lookX, eyeY + 6.5 * scale, 2.0 * scale, 0.1 * Math.PI, 0.9 * Math.PI);
   ctx.stroke();
 
   ctx.shadowBlur = 0; // Reset glows
@@ -3317,6 +3354,7 @@ function isGameActive() {
   const customMapList = document.getElementById('customMapListOverlay');
   const mapEditor = document.getElementById('mapEditorOverlay');
   const friendMaps = document.getElementById('friendMapsOverlay');
+  const updateHistory = document.getElementById('updateHistoryModal');
 
   return (!login || login.classList.contains('hidden')) &&
          (!chapter || chapter.classList.contains('hidden')) &&
@@ -3327,7 +3365,8 @@ function isGameActive() {
          (!customMapMenu || customMapMenu.classList.contains('hidden')) &&
          (!customMapList || customMapList.classList.contains('hidden')) &&
          (!mapEditor || mapEditor.classList.contains('hidden')) &&
-         (!friendMaps || friendMaps.classList.contains('hidden'));
+         (!friendMaps || friendMaps.classList.contains('hidden')) &&
+         (!updateHistory || updateHistory.classList.contains('hidden'));
 }
 
 function setupTouchControls() {
@@ -3755,7 +3794,7 @@ function updateRecordHUD() {
 }
 
 // --------------------------------------------------------------------------
-// Authentication & Cloud Sync (kvdb.io)
+// Authentication & Cloud Sync (jsonhosting.com)
 // --------------------------------------------------------------------------
 const USER_PASSWORDS = {
   '엽이': 'tmdduql11',
@@ -3765,8 +3804,6 @@ const USER_PASSWORDS = {
   '톰토': 'xhadkxh66',
   '관리자': 'password55'
 };
-
-const KVDB_BUCKET_ID = 'Mz6jZ7tY88aJp2yU7c8q2z';
 
 function checkLoginState() {
   const user = localStorage.getItem('runic_dungeon_user');
@@ -3893,6 +3930,18 @@ async function uploadUserRecordsCloud(username) {
       const rec = localStorage.getItem(`runic_dungeon_best_record_${idx}`);
       if (rec) {
         userRecords[idx] = JSON.parse(rec);
+      } else {
+        // 백업용: 클리어하지 않았으나 시도 횟수나 플레이 시간이 있는 경우 업로드
+        const retries = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${username}_${idx}`), 10) || 0;
+        const playTime = parseInt(localStorage.getItem(`runic_dungeon_play_time_${username}_${idx}`), 10) || 0;
+        if (retries > 0 || playTime > 0) {
+          userRecords[idx] = {
+            stars: 0,
+            moves: 0,
+            retries: retries,
+            clearTime: Math.round(playTime / 1000)
+          };
+        }
       }
     });
 
@@ -3966,11 +4015,31 @@ async function syncUserRecordsFromCloud(username) {
       
       if (userRecords) {
         DEFAULT_LEVELS.forEach((_, idx) => {
-          if (userRecords[idx] && parseInt(userRecords[idx].stars, 10) > 0) {
-            // Only restore records that have at least 1 star (별 초기화된 기록 제외)
-            localStorage.setItem(`runic_dungeon_best_record_${idx}`, JSON.stringify(userRecords[idx]));
+          const rec = userRecords[idx];
+          if (rec) {
+            const starsVal = parseInt(rec.stars, 10) || 0;
+            if (starsVal > 0) {
+              localStorage.setItem(`runic_dungeon_best_record_${idx}`, JSON.stringify(rec));
+            } else {
+              localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
+            }
+
+            // Sync unfinished progress keys (retry count and play time)
+            if (rec.retries !== undefined) {
+              localStorage.setItem(`runic_dungeon_retry_count_${username}_${idx}`, rec.retries);
+            } else {
+              localStorage.removeItem(`runic_dungeon_retry_count_${username}_${idx}`);
+            }
+
+            if (rec.clearTime !== undefined) {
+              localStorage.setItem(`runic_dungeon_play_time_${username}_${idx}`, rec.clearTime * 1000);
+            } else {
+              localStorage.removeItem(`runic_dungeon_play_time_${username}_${idx}`);
+            }
           } else {
             localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
+            localStorage.removeItem(`runic_dungeon_retry_count_${username}_${idx}`);
+            localStorage.removeItem(`runic_dungeon_play_time_${username}_${idx}`);
           }
         });
         updateRecordHUD();
@@ -3982,6 +4051,8 @@ async function syncUserRecordsFromCloud(username) {
         // Clear local records to prevent re-uploading deleted progress
         DEFAULT_LEVELS.forEach((_, idx) => {
           localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
+          localStorage.removeItem(`runic_dungeon_retry_count_${username}_${idx}`);
+          localStorage.removeItem(`runic_dungeon_play_time_${username}_${idx}`);
         });
         updateRecordHUD();
         if (!document.getElementById('stageSelectOverlay').classList.contains('hidden')) {
@@ -4407,8 +4478,8 @@ async function showAdminPathsModal() {
             </div>
             <button onclick="window.startReplay('${window.adminPathsSelectedUser}', ${stageIdx}, '${rec.path}')" class="btn btn-secondary" style="margin-top: 6px; padding: 4px 8px; font-size: 0.75rem; width: 100%; border: none; background: rgba(0, 229, 255, 0.2); color: #fff; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 229, 255, 0.4)'" onmouseout="this.style.background='rgba(0, 229, 255, 0.2)'">▶ 재생</button>
             <div style="display: flex; gap: 5px; margin-top: 5px;">
-              <button onclick="window.resetStageStarsOnly('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 160, 0, 0.25); border: 1px solid rgba(255, 160, 0, 0.5); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; line-height: 1.3;" title="별 획득만 0으로 초기화 (시간/시도횟수 유지)">⭐ 별 초기화</button>
-              <button onclick="window.deleteStageRecord('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 23, 68, 0.25); border: 1px solid rgba(255, 23, 68, 0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold; line-height: 1.3;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드 리셋</button>
+              <button onclick="window.resetStageStarsOnlyAndRefreshTable('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 160, 0, 0.25); border: 1px solid rgba(255, 160, 0, 0.5); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; line-height: 1.3;" title="별 획득만 0으로 초기화 (시간/시도횟수 유지)">⭐ 별 초기화</button>
+              <button onclick="window.deleteStageRecordAndRefreshTable('${window.adminPathsSelectedUser}', ${stageIdx})" style="flex: 1; padding: 3px 6px; font-size: 0.68rem; background: rgba(255, 23, 68, 0.25); border: 1px solid rgba(255, 23, 68, 0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold; line-height: 1.3;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드 리셋</button>
             </div>
           `;
           grid.appendChild(card);
@@ -4424,182 +4495,7 @@ async function showAdminPathsModal() {
   }
 }
 
-async function deleteUserRecord(username) {
-  if (!confirm(`${username} 모험가의 모든 클리어 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 해당 모험가의 로컬 기록도 다음 로그인 시 초기화됩니다.`)) {
-    return;
-  }
-  
-  try {
-    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
-    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(proxiedUrl);
-    let dbData = {};
-    if (res.ok) {
-      const obj = await res.json();
-      dbData = obj.data || {};
-    } else {
-      alert('기록을 불러오는 데 실패했습니다.');
-      return;
-    }
-    
-    if (dbData[username]) {
-      delete dbData[username];
-    }
-    
-    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
-    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
-    const putRes = await fetch(proxiedPutUrl, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-Edit-Key': DB_EDIT_KEY
-      },
-      body: JSON.stringify({
-        name: "RunicDungeonLeaderboard",
-        data: dbData
-      })
-    });
-    
-    if (putRes.ok) {
-      alert(`${username} 모험가의 기록이 삭제되었습니다.`);
-      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
-      if (username === currentUser) {
-        DEFAULT_LEVELS.forEach((_, idx) => {
-          localStorage.removeItem(`runic_dungeon_best_record_${idx}`);
-          localStorage.removeItem(`runic_dungeon_retry_count_${username}_${idx}`);
-          localStorage.removeItem(`runic_dungeon_play_time_${username}_${idx}`);
-        });
-        updateRecordHUD();
-      }
-      showAdminPathsModal();
-    } else {
-      alert('기록 삭제 중 오류가 발생했습니다. 다시 시도해 주세요.');
-    }
-  } catch (e) {
-    console.error('Error deleting user record:', e);
-    alert('서버 통신 중 오류가 발생했습니다.');
-  }
-}
 
-window.deleteUserRecord = deleteUserRecord;
-
-async function deleteStageRecord(username, stageIdx) {
-  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 해당 모험가의 로컬 기록도 다음 로그인 시 초기화됩니다.`)) {
-    return;
-  }
-  
-  try {
-    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
-    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(proxiedUrl);
-    let dbData = {};
-    if (res.ok) {
-      const obj = await res.json();
-      dbData = obj.data || {};
-    } else {
-      alert('기록을 불러오는 데 실패했습니다.');
-      return;
-    }
-    
-    if (dbData[username] && dbData[username][stageIdx]) {
-      delete dbData[username][stageIdx];
-    }
-    
-    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
-    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
-    const putRes = await fetch(proxiedPutUrl, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-Edit-Key': DB_EDIT_KEY
-      },
-      body: JSON.stringify({
-        name: "RunicDungeonLeaderboard",
-        data: dbData
-      })
-    });
-    
-    if (putRes.ok) {
-      alert(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 기록이 삭제되었습니다.`);
-      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
-      if (username === currentUser) {
-        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
-        localStorage.removeItem(`runic_dungeon_retry_count_${username}_${stageIdx}`);
-        localStorage.removeItem(`runic_dungeon_play_time_${username}_${stageIdx}`);
-        updateRecordHUD();
-      }
-      showAdminPathsModal();
-    } else {
-      alert('기록 삭제 중 오류가 발생했습니다. 다시 시도해 주세요.');
-    }
-  } catch (e) {
-    console.error('Error deleting stage record:', e);
-    alert('서버 통신 중 오류가 발생했습니다.');
-  }
-}
-
-window.deleteStageRecord = deleteStageRecord;
-
-// Reset only the stars for a stage record (keep time and retry count)
-async function resetStageStarsOnly(username, stageIdx) {
-  if (!confirm(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 스테이지\n별 획득만 0으로 초기화합니다.\n(진행 시간과 시도 횟수는 유지됩니다)\n\n계속하시겠습니까?`)) {
-    return;
-  }
-  
-  try {
-    const targetUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}/raw?t=${Date.now()}`;
-    const proxiedUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(proxiedUrl);
-    let dbData = {};
-    if (res.ok) {
-      const obj = await res.json();
-      dbData = obj.data || {};
-    } else {
-      alert('기록을 불러오는 데 실패했습니다.');
-      return;
-    }
-    
-    // Only zero out the stars; keep everything else intact
-    if (dbData[username] && dbData[username][stageIdx]) {
-      dbData[username][stageIdx].stars = 0;
-    } else {
-      alert('해당 기록을 찾을 수 없습니다.');
-      return;
-    }
-    
-    const targetPutUrl = `https://jsonhosting.com/api/json/${DB_OBJECT_ID}`;
-    const proxiedPutUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetPutUrl)}`;
-    const putRes = await fetch(proxiedPutUrl, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'X-Edit-Key': DB_EDIT_KEY
-      },
-      body: JSON.stringify({
-        name: "RunicDungeonLeaderboard",
-        data: dbData
-      })
-    });
-    
-    if (putRes.ok) {
-      alert(`${username} 모험가의 ${getLevelDisplayNumber(stageIdx)} 별 획득이 초기화되었습니다.\n(시간/시도 횟수는 유지됩니다)`);
-      // Remove local cache so HUD AP also disappears for current user
-      const currentUser = localStorage.getItem('runic_dungeon_user') || '';
-      if (username === currentUser) {
-        localStorage.removeItem(`runic_dungeon_best_record_${stageIdx}`);
-        updateRecordHUD();
-      }
-      showAdminPathsModal();
-    } else {
-      alert('별 초기화 중 오류가 발생했습니다. 다시 시도해 주세요.');
-    }
-  } catch (e) {
-    console.error('Error resetting stage stars:', e);
-    alert('서버 통신 중 오류가 발생했습니다.');
-  }
-}
-
-window.resetStageStarsOnly = resetStageStarsOnly;
 
 // Replay Playback Engine Functions
 window.startReplay = function(username, stageIdx, pathString) {
@@ -4837,18 +4733,28 @@ function renderStageSelectGrid() {
       const retryCount = parseInt(localStorage.getItem(`runic_dungeon_retry_count_${user}_${idx}`), 10) || 0;
       if (best && best.stars === 3) {
         const finalRetries = best.retries || retryCount || 1;
-        const timeStr = best.clearTime !== undefined ? ` (${formatTime(best.clearTime)})` : '';
-        retriesDiv.innerHTML = `<span style="color: #00e676; font-weight: bold;">3성 달성:</span> ${finalRetries}회${timeStr}`;
+        const timeStr = best.clearTime !== undefined ? `${formatTime(best.clearTime)}` : '-';
+        retriesDiv.innerHTML = `
+          <span style="color: #00e676; font-weight: bold; display: block; margin-bottom: 2px;">3성 달성</span>
+          <span style="display: block; color: #ffffff; margin-bottom: 2px;">${finalRetries}회</span>
+          <span style="display: block; color: rgba(255,255,255,0.7);">${timeStr}</span>
+        `;
       } else {
         const accumTime = parseInt(localStorage.getItem(`runic_dungeon_play_time_${user}_${idx}`), 10) || 0;
         const accumSec = Math.round(accumTime / 1000);
-        const timeStr = accumSec > 0 ? ` (${formatTime(accumSec)})` : '';
-        retriesDiv.innerHTML = retryCount > 0 
-          ? `<span style="color: #ff9100; font-weight: bold;">시도 중:</span> ${retryCount}회${timeStr}` 
-          : `<span style="color: rgba(255,255,255,0.35);">시도 없음</span>`;
+        const timeStr = accumSec > 0 ? `${formatTime(accumSec)}` : '';
+        if (retryCount > 0) {
+          retriesDiv.innerHTML = `
+            <span style="color: #ff9100; font-weight: bold; display: block; margin-bottom: 2px;">시도 중</span>
+            <span style="display: block; color: #ffffff; margin-bottom: 2px;">${retryCount}회</span>
+            ${timeStr ? `<span style="display: block; color: rgba(255,255,255,0.7);">${timeStr}</span>` : ''}
+          `;
+        } else {
+          retriesDiv.innerHTML = `<span style="color: rgba(255,255,255,0.35); display: block;">시도 없음</span>`;
+        }
       }
     } else {
-      retriesDiv.textContent = '-';
+      retriesDiv.innerHTML = `<span style="color: rgba(255,255,255,0.3); display: block;">-</span>`;
     }
     
     card.appendChild(numDiv);
@@ -6231,24 +6137,30 @@ async function showAdminUserStageMenu(targetUser, userRecords) {
       const retryCount = record.retries || 1;
       
       row.innerHTML = `
-        <td style="font-family: var(--font-body);"><span style="color: var(--color-primary); font-weight: bold;">${displayStr}</span> (${lvl.name})</td>
-        <td style="color: #ffea00; font-weight: bold; font-family: var(--font-body);">${starsText}</td>
-        <td style="font-family: var(--font-body);">${retryCount}회</td>
-        <td style="font-family: var(--font-body);">${timeText}</td>
+        <td style="font-family: var(--font-body); font-weight: 500; font-size: 0.72rem; line-height: 1.2;">
+          <span style="color: var(--color-primary); font-weight: bold; display: block;">${displayStr}</span>
+          <span style="font-size: 0.65rem; color: #8892b0; display: block; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvl.name}</span>
+        </td>
+        <td style="color: #ffea00; font-weight: bold; font-family: var(--font-body); font-size: 0.7rem; letter-spacing: -1px;">${starsText}</td>
+        <td style="font-family: var(--font-body); font-size: 0.7rem;">${retryCount}회</td>
+        <td style="font-family: var(--font-body); font-size: 0.7rem;">${timeText}</td>
         <td style="font-family: var(--font-body);">
-          <button onclick="window.startReplay('${targetUser}', ${idx}, '${record.path}')" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.75rem; margin: 0;">▶ 재생</button>
+          <button onclick="window.startReplay('${targetUser}', ${idx}, '${record.path}')" class="btn btn-primary" style="padding: 4px 6px; font-size: 0.68rem; margin: 0; white-space: nowrap;">▶재생</button>
         </td>
         <td style="font-family: var(--font-body); white-space: nowrap;">
-          <button onclick="window.resetStageStarsOnlyAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 6px; font-size: 0.68rem; background: rgba(255,160,0,0.2); border: 1px solid rgba(255,160,0,0.5); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; margin-right: 3px;" title="별 획득만 0으로 초기화 (시간/시도횟수 유지)">⭐ 별</button>
-          <button onclick="window.deleteStageRecordAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 6px; font-size: 0.68rem; background: rgba(255,23,68,0.2); border: 1px solid rgba(255,23,68,0.5); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold;" title="모든 기록 완전 초기화 (하드 리셋)">🗑️ 하드</button>
+          <button onclick="window.resetStageStarsOnlyAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 5px; font-size: 0.65rem; background: rgba(255,160,0,0.15); border: 1px solid rgba(255,160,0,0.4); cursor: pointer; border-radius: 4px; color: #ffa000; font-weight: bold; margin-right: 2px;" title="별 획득만 0으로 초기화">⭐별</button>
+          <button onclick="window.deleteStageRecordAndRefreshTable('${targetUser}', ${idx})" style="padding: 3px 5px; font-size: 0.65rem; background: rgba(255,23,68,0.15); border: 1px solid rgba(255,23,68,0.4); cursor: pointer; border-radius: 4px; color: #ff1744; font-weight: bold;" title="전체 삭제">🗑️</button>
         </td>
       `;
     } else {
       row.innerHTML = `
-        <td style="font-family: var(--font-body);"><span style="color: #ff9100; font-weight: bold;">${displayStr}</span> (${lvl.name})</td>
-        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
-        <td style="font-family: var(--font-body);">시도 중</td>
-        <td style="color: var(--text-muted); font-family: var(--font-body);">-</td>
+        <td style="font-family: var(--font-body); font-weight: 500; font-size: 0.72rem; line-height: 1.2;">
+          <span style="color: #ff9100; font-weight: bold; display: block;">${displayStr}</span>
+          <span style="font-size: 0.65rem; color: #8892b0; display: block; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvl.name}</span>
+        </td>
+        <td style="color: var(--text-muted); font-family: var(--font-body); font-size: 0.7rem;">-</td>
+        <td style="font-family: var(--font-body); font-size: 0.7rem; color: #8892b0;">시도 중</td>
+        <td style="color: var(--text-muted); font-family: var(--font-body); font-size: 0.7rem;">-</td>
         <td style="font-family: var(--font-body);">-</td>
         <td style="font-family: var(--font-body);">-</td>
       `;
@@ -6314,3 +6226,93 @@ window.resetStageStarsOnlyAndRefreshTable = async function(username, stageIdx) {
     } else { alert('별 초기화 중 오류가 발생했습니다.'); }
   } catch(e) { console.error(e); alert('서버 통신 오류'); }
 };
+
+async function showUpdateHistoryModal() {
+  const modal = document.getElementById('updateHistoryModal');
+  const body = document.getElementById('updateHistoryModalBody');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">업데이트 기록을 불러오는 중...</div>';
+
+  try {
+    const response = await fetch('update.txt?t=' + Date.now());
+    if (!response.ok) throw new Error('파일을 불러올 수 없습니다.');
+    const text = await response.text();
+    
+    // Parse update.txt by day
+    // Example layout in update.txt:
+    // 2026년 6월 4일
+    // 내용...
+    //
+    // 2026년 6월 5일
+    // 내용...
+    
+    const rawLines = text.split('\n');
+    const logs = [];
+    let currentLog = null;
+
+    rawLines.forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Check if line starts with date (e.g. 2026년 6월 4일)
+      const dateRegex = /^\d{4}년\s+\d{1,2}월\s+\d{1,2}일$/;
+      if (dateRegex.test(trimmed)) {
+        if (currentLog) {
+          logs.push(currentLog);
+        }
+        currentLog = {
+          date: trimmed,
+          changes: []
+        };
+      } else {
+        if (currentLog) {
+          currentLog.changes.push(trimmed);
+        } else {
+          // If no date header yet, create a default one
+          currentLog = {
+            date: '이전 기록',
+            changes: [trimmed]
+          };
+        }
+      }
+    });
+
+    if (currentLog) {
+      logs.push(currentLog);
+    }
+
+    // Sort logs (latest date first)
+    logs.reverse();
+
+    if (logs.length === 0) {
+      body.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">기록이 비어 있습니다.</div>';
+      return;
+    }
+
+    let html = '<div class="guide-grid">';
+    logs.forEach(log => {
+      html += `
+        <div class="guide-card" style="flex-direction: column; gap: 8px; width: 100%; border: 1px solid rgba(0, 176, 255, 0.15); box-shadow: 0 0 10px rgba(0, 176, 255, 0.05);">
+          <div style="font-family: var(--font-title); font-size: 1.05rem; font-weight: bold; color: var(--color-primary); display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); width: 100%; padding-bottom: 6px;">
+            <span>📅</span> ${log.date}
+          </div>
+          <ul style="margin: 0; padding-left: 20px; list-style-type: square; width: 100%; display: flex; flex-direction: column; gap: 4px;">
+      `;
+      log.changes.forEach(change => {
+        html += `<li style="font-size: 0.82rem; color: var(--text-main); line-height: 1.45; text-align: left;">${change}</li>`;
+      });
+      html += `
+          </ul>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    body.innerHTML = html;
+  } catch (e) {
+    console.error("Failed to load updates:", e);
+    body.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--color-danger);">기록을 불러오는 중 오류가 발생했습니다.</div>';
+  }
+}
