@@ -4110,6 +4110,7 @@ async function showLeaderboardModal(chapterIdx = null) {
       let totalStars = 0;
       let totalRetries = 0;
       let totalTime = 0;
+      let totalMoves = 0;
       let clearedStages = [];
       let latestClearTime = 0;
       
@@ -4126,6 +4127,9 @@ async function showLeaderboardModal(chapterIdx = null) {
           totalRetries += retryVal;
           const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
           totalTime += timeVal;
+          
+          const movesVal = rec.moves !== undefined ? parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0 : 0;
+          totalMoves += movesVal;
           
           clearedStages.push(getLevelDisplayNumber(idx));
           
@@ -4147,6 +4151,7 @@ async function showLeaderboardModal(chapterIdx = null) {
         totalStars,
         avgRetries,
         avgTime,
+        totalMoves,
         numCleared,
         latestClearTime,
         userRecords
@@ -4193,6 +4198,7 @@ async function showLeaderboardModal(chapterIdx = null) {
         <td>${rankText}</td>
         <td>${getUserIcon(stat.name)} ${stat.name}</td>
         <td style="color: #ffea00; font-weight: bold;">★ ${stat.totalStars}</td>
+        <td>-</td>
         <td>${stat.numCleared > 0 ? stat.avgRetries.toFixed(1) + '회' : '-'}</td>
         <td>${stat.numCleared > 0 ? formatTime(stat.avgTime) : '-'}</td>
         <td style="font-size: 0.95rem; color: #00e676; font-weight: bold;">${stat.numCleared}개</td>
@@ -4202,6 +4208,7 @@ async function showLeaderboardModal(chapterIdx = null) {
       // 상세 기록용 행 생성 및 추가
       let stageListHtml = '';
       let starListHtml = '';
+      let movesListHtml = '';
       let attemptListHtml = '';
       let timeListHtml = '';
       let statusListHtml = '';
@@ -4221,18 +4228,18 @@ async function showLeaderboardModal(chapterIdx = null) {
           const retryVal = parseInt(rec.retries || 1, 10) || 1;
           const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
           
-          // Get moves / spent AP. If rec.moves is saved, use it.
           const movesVal = rec.moves !== undefined ? parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0 : 0;
-          const apSuffix = movesVal > 0 ? ` (${movesVal}AP)` : '';
 
           stageListHtml += `<span style="opacity:0.7;">${displayNum}</span><br>`;
-          starListHtml += `★ ${starsVal}${apSuffix}<br>`;
+          starListHtml += `★ ${starsVal}<br>`;
+          movesListHtml += `${movesVal > 0 ? movesVal + ' AP' : '-'}<br>`;
           attemptListHtml += `${retryVal}회<br>`;
           timeListHtml += `${formatTime(timeVal)}<br>`;
           statusListHtml += `<span style="color: #00e676;">완료</span><br>`;
         } else {
           stageListHtml += `<span style="opacity:0.4;">${displayNum}</span><br>`;
           starListHtml += `<span style="color: rgba(255,255,255,0.15);">★ 0</span><br>`;
+          movesListHtml += `<span style="color: rgba(255,255,255,0.15);">-</span><br>`;
           attemptListHtml += `<span style="color: rgba(255,255,255,0.15);">-</span><br>`;
           timeListHtml += `<span style="color: rgba(255,255,255,0.15);">-</span><br>`;
           statusListHtml += `<span style="color: rgba(255,255,255,0.15);">미진입</span><br>`;
@@ -4249,6 +4256,7 @@ async function showLeaderboardModal(chapterIdx = null) {
           <td></td>
           <td style="font-size: 0.8rem; text-align: center; font-family: monospace; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${stageListHtml}</td>
           <td style="color: #ffea00; font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${starListHtml}</td>
+          <td style="color: #00e676; font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${movesListHtml}</td>
           <td style="color: #ff9100; font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${attemptListHtml}</td>
           <td style="color: #00e5ff; font-size: 0.8rem; font-family: monospace; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${timeListHtml}</td>
           <td style="font-size: 0.8rem; line-height: 1.5; padding-top: 4px; padding-bottom: 8px;">${statusListHtml}</td>
@@ -4259,7 +4267,7 @@ async function showLeaderboardModal(chapterIdx = null) {
     
   } catch (e) {
     console.error('Error fetching leaderboard:', e);
-    tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
   }
 }
 
