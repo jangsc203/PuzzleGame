@@ -2013,10 +2013,12 @@ function showOverlay(title, desc, failed) {
       const publishBtn = document.getElementById('btnEditorPublish');
       if (publishBtn) publishBtn.disabled = false;
 
-      descEl.innerHTML = `모험가님이 제작한 퍼즐의 탈출 검증에 성공했습니다!<br>최적 AP: ${editorOptimalAP} AP<br>최적 이동 횟수: ${editorOptimalMoves} Moves<br>이제 에디터로 복귀하여 이 맵을 서버에 배포할 수 있습니다!`;
+      descEl.innerHTML = `모험가님이 제작한 퍼즐의 탈출 검증에 성공했습니다!<br>최적 기록: ${editorOptimalAP} AP (${editorOptimalMoves} Moves)<br>이제 에디터로 복귀하여 이 맵을 서버에 배포할 수 있습니다!`;
+      if (btnMenu) btnMenu.classList.add('hidden');
       btnRestart.classList.remove('hidden');
     } else if (window.customMapMode === 'play') {
       btnNext.textContent = "목록으로 복귀";
+      if (btnMenu) btnMenu.classList.add('hidden');
       
       const spentAP = maxAP - remainingAP;
       const optimalAP = currentPlayingCustomMap.optimalAP || 0;
@@ -2040,7 +2042,7 @@ function showOverlay(title, desc, failed) {
       
       saveCustomMapRecord(currentPlayingCustomMap.id, stars, moveCount);
       
-      descEl.innerHTML = `친구의 맵을 멋지게 클리어했습니다!<br>소비 AP: ${maxAP - remainingAP} AP<br>이동 횟수: ${moveCount} Moves<br>(친구의 최적 AP: ${currentPlayingCustomMap.optimalAP} AP)`;
+      descEl.innerHTML = `친구의 맵을 멋지게 클리어했습니다!<br>소비 AP: ${spentAP} AP (${moveCount} Moves)<br>(친구의 최적 AP: ${optimalAP} AP)`;
       btnRestart.classList.remove('hidden');
     } else {
       btnNext.textContent = "다음 레벨";
@@ -3653,7 +3655,7 @@ function saveCustomMapRecord(mapId, stars, moves) {
 async function showCustomMapLeaderboard(mapId, mapName) {
   const modal = document.getElementById('customLeaderboardModal');
   const tbody = document.getElementById('customLeaderboardTableBody');
-  tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px;">데이터를 불러오는 중... (Syncing Cloud)</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px;">데이터를 불러오는 중... (Syncing Cloud)</td></tr>';
   modal.classList.remove('hidden');
 
   const modalTitle = modal.querySelector('.modal-header h2');
@@ -3667,7 +3669,7 @@ async function showCustomMapLeaderboard(mapId, mapName) {
   try {
     const dbData = await fetchCloudData();
     if (!dbData) {
-      tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
       return;
     }
 
@@ -3703,7 +3705,7 @@ async function showCustomMapLeaderboard(mapId, mapName) {
 
     tbody.innerHTML = '';
     if (records.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: var(--text-muted);">아직 클리어 기록이 없습니다. 첫 클리어에 도전해보세요!</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; color: var(--text-muted);">아직 클리어 기록이 없습니다. 첫 클리어에 도전해보세요!</td></tr>';
       return;
     }
 
@@ -3731,6 +3733,7 @@ async function showCustomMapLeaderboard(mapId, mapName) {
         <td style="color: #ffea00; font-weight: bold;">★ ${stat.stars}</td>
         <td>${stat.retries}회</td>
         <td>${formatTime(stat.clearTime)}</td>
+        <td>${stat.moves}회</td>
         <td style="font-size: 0.85rem; color: var(--text-muted);">${dateStr}</td>
       `;
       tbody.appendChild(row);
@@ -3738,7 +3741,7 @@ async function showCustomMapLeaderboard(mapId, mapName) {
 
   } catch (e) {
     console.error("Custom Leaderboard fetch error:", e);
-    tbody.innerHTML = '<tr><td colspan="6" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; color: #ff1744;">순위표 데이터를 가져오는 중 오류가 발생했습니다.</td></tr>';
   }
 }
 
@@ -4217,9 +4220,13 @@ async function showLeaderboardModal(chapterIdx = null) {
           const starsVal = parseInt(rec.stars, 10) || 0;
           const retryVal = parseInt(rec.retries || 1, 10) || 1;
           const timeVal = parseInt(rec.clearTime || 0, 10) || 0;
+          
+          // Get moves / spent AP. If rec.moves is saved, use it.
+          const movesVal = rec.moves !== undefined ? parseInt(String(rec.moves).replace(/[^0-9]/g, ''), 10) || 0 : 0;
+          const apSuffix = movesVal > 0 ? ` (${movesVal}AP)` : '';
 
           stageListHtml += `<span style="opacity:0.7;">${displayNum}</span><br>`;
-          starListHtml += `★ ${starsVal}<br>`;
+          starListHtml += `★ ${starsVal}${apSuffix}<br>`;
           attemptListHtml += `${retryVal}회<br>`;
           timeListHtml += `${formatTime(timeVal)}<br>`;
           statusListHtml += `<span style="color: #00e676;">완료</span><br>`;
