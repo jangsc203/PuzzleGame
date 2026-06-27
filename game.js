@@ -1005,6 +1005,7 @@ function loadLevel(index, customLevelData = null, isRestart = false) {
   remainingAP = lvl.maxAP;
   moveCount = 0;
   spikesUp = false; // Reset spikes to retracted at start of level
+  visualSpikesUp = false; // Reset visual spikes to retracted at start of level
 
   // Clone 2D grid using the cropped bounds
   boardGrid = Array(levelHeight).fill(null).map(() => Array(levelWidth).fill(' '));
@@ -1376,7 +1377,7 @@ function simulateMove(dx, dy) {
     simSpikesUp = !simSpikesUp; // Spike state toggles
     spikeStatesPerStep.push(simSpikesUp);
     
-    if (simGrid[nextPY][nextPX] === 'T' && simSpikesUp) {
+    if ((simGrid[nextPY][nextPX] === 'T' && simSpikesUp) || (simGrid[nextPY][nextPX] === 't' && !simSpikesUp)) {
       curAP -= 10;
       playerSteps.push({ x: nextPX, y: nextPY, action: 'spike' });
       soundsToPlay.push({ delay: 50, type: 'spike' });
@@ -1483,7 +1484,7 @@ function simulateMove(dx, dy) {
           break;
         }
 
-        if (simGrid[py][px] === 'T' && simSpikesUp) {
+        if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
           curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
@@ -1538,7 +1539,7 @@ function simulateMove(dx, dy) {
         py = portalDest.y;
       }
     } else if (simGrid[py][px] === 'I') {
-      if (simGrid[py][px] === 'T' && simSpikesUp) {
+      if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
         curAP -= 10;
         playerSteps.push({ x: px, y: py, action: 'spike' });
         soundsToPlay.push({ delay: 50, type: 'spike' });
@@ -1573,7 +1574,7 @@ function simulateMove(dx, dy) {
           break;
         }
 
-        if (simGrid[py][px] === 'T' && simSpikesUp) {
+        if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
           curAP -= 10;
           playerSteps.push({ x: px, y: py, action: 'spike' });
           soundsToPlay.push({ delay: 200, type: 'spike' });
@@ -1596,7 +1597,7 @@ function simulateMove(dx, dy) {
 
         if (simGrid[py][px] !== 'I') break;
       }
-    } else if (simGrid[py][px] === 'T' && simSpikesUp) {
+    } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
       curAP -= 10;
       playerSteps.push({ x: px, y: py, action: 'spike' });
       soundsToPlay.push({ delay: 50, type: 'spike' });
@@ -2011,7 +2012,7 @@ function checkVictoryOrLoss() {
     sound.playFail();
     const reason = "심연의 구덩이 속으로 추락했습니다.";
     showOverlay("GAME OVER", reason, true);
-  } else if (boardGrid[player.y][player.x] === 'T' && spikesUp) {
+  } else if ((boardGrid[player.y][player.x] === 'T' && spikesUp) || (boardGrid[player.y][player.x] === 't' && !spikesUp)) {
     gameStatus = 'gameover';
     sound.playFail();
     const reason = "날카로운 가시에 찔렸습니다!";
@@ -2648,14 +2649,16 @@ function drawTile(x, y, type) {
       }
       break;
 
-    case 'T': // Spike Trap (Top-down view redesign)
+    case 'T':
+    case 't': { // Spike Trap (T: Normal, t: Alternating)
       const key = `${x},${y}`;
-      const isUp = visualSpikesUp || (activeSpikesAnim[key] && activeSpikesAnim[key] > 0);
+      const isAlt = boardGrid[y][x] === 't';
+      const isUp = (isAlt ? !visualSpikesUp : visualSpikesUp) || (activeSpikesAnim[key] && activeSpikesAnim[key] > 0);
       
       // 1. Trap metal base plate (charcoal panel)
-      ctx.fillStyle = '#21252b';
+      ctx.fillStyle = isAlt ? '#2c2522' : '#21252b';
       ctx.fillRect(px + 1, py + 1, tileSize - 2, tileSize - 2);
-      ctx.strokeStyle = '#3e4451';
+      ctx.strokeStyle = isAlt ? '#54443e' : '#3e4451';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
 
@@ -2737,9 +2740,9 @@ function drawTile(x, y, type) {
             ctx.lineTo(cx + r * cos30, cy + r * 0.5);
             ctx.stroke();
 
-            // LED Glowing Alert Red center dot representing spike warning point
-            ctx.fillStyle = '#ff1744';
-            ctx.shadowColor = '#ff1744';
+            // LED Glowing Alert center dot representing spike warning point
+            ctx.fillStyle = isAlt ? '#ff9100' : '#ff1744';
+            ctx.shadowColor = isAlt ? '#ff9100' : '#ff1744';
             ctx.shadowBlur = 4;
             ctx.beginPath();
             ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2);
@@ -2764,6 +2767,7 @@ function drawTile(x, y, type) {
           }
         });
       });
+    }
       break;
 
     case '^':
@@ -5308,6 +5312,7 @@ function renderEditorGrid() {
         case 'K': bgClass = 'cell-switch-perm'; break;
         case 'D': bgClass = 'cell-door'; break;
         case 'T': bgClass = 'cell-spikes'; break;
+        case 't': bgClass = 'cell-spikes-alt'; break;
         case 'C': bgClass = 'cell-crumb1'; break;
         case 'X': bgClass = 'cell-crumb2'; break;
         case 'P': bgClass = 'cell-portal'; break;
@@ -5379,6 +5384,7 @@ function renderEditorGrid() {
           case 'K': cell.textContent = '🟡'; break;
           case 'D': cell.textContent = '🔒'; break;
           case 'T': cell.textContent = '🔺'; break;
+          case 't': cell.textContent = '🔻'; break;
           case 'C': cell.textContent = '1'; break;
           case 'X': cell.textContent = '2'; break;
           case 'P': cell.textContent = '▲'; break;
@@ -5674,7 +5680,7 @@ function handleEditorCellClick(x, y) {
     removeConnectionAt(x, y);
     invalidateEditorVerification();
     renderEditorGrid();
-  } else if (['I', 'H', 'G', 'T', 'C', 'X', 'P', '^', 'v', '<', '>'].includes(editorSelectedTool)) {
+  } else if (['I', 'H', 'G', 'T', 't', 'C', 'X', 'P', '^', 'v', '<', '>'].includes(editorSelectedTool)) {
     if (currentTile === 'W' || currentTile === ' ') {
       window.isMouseDown = false;
       alert("바닥 타일을 먼저 설치해야 합니다!");
@@ -5785,6 +5791,10 @@ function startEditorTestPlay() {
     connections: editorConnections.map(c => ({
       switch: { ...c.switch },
       door: { ...c.door }
+    })),
+    portalConnections: editorPortalConnections.map(c => ({
+      p1: { ...c.p1 },
+      p2: { ...c.p2 }
     }))
   };
 
@@ -6107,6 +6117,10 @@ function startFriendMapPlay(map) {
     connections: map.connections ? map.connections.map(c => ({
       switch: { ...c.switch },
       door: { ...c.door }
+    })) : [],
+    portalConnections: map.portalConnections ? map.portalConnections.map(c => ({
+      p1: { ...c.p1 },
+      p2: { ...c.p2 }
     })) : []
   };
 
