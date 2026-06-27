@@ -364,6 +364,81 @@ const DEFAULT_LEVELS = [
     locked: true,
     grid: [["."]],
     entities: []
+  },
+
+  // ==================== 챕터 2: 서리의 요새 ====================
+  {
+    name: "2-1. 얼어붙은 통로",
+    description: "얼어붙은 빙판과 부서지는 바닥, 그리고 숨겨진 관문을 넘어 목표지점에 상자를 옮기세요.",
+    width: 15,
+    height: 15,
+    maxAP: 73,
+    optimalAP: 73,
+    chapter: 2,
+    locked: false,
+    grid: [
+      ["I","C","I","I","I","C","C"," ","C","C","I","I","I","I","I"],
+      ["C","C","I","C","C","C",".",  "H",".",  "C","I","I","I","C","C"],
+      ["C","I","I","C","I","C","C"," ","C","C","C","C","C","C","K"],
+      ["C","C","C","C","I","I","I"," ","I","I","C","I","I","C","C"],
+      ["I","I","I","C","I","I","I"," ","I","I","C","I","I","I","I"],
+      ["I","I","C","C","C","I","I"," ","C","C","C","I","I","I","I"],
+      ["I","I","C",".",  "C","I","I","H",".",  "C","I","I","I","I","I"],
+      [" "," "," ","H"," "," "," "," ","H"," "," "," "," "," "," "],
+      ["I","I","C",".",  "C","I","I"," ","I","I","I","I","I","I","G"],
+      ["I","I","C","C","C","I","I"," ","I","I","I","I","I","I","I"],
+      ["I","I","I","C","I","I","I"," ","I","I","I","I","I","I","I"],
+      ["I","C","C","C","W","W","W","W","W","W","W",".",  "W","W","W"],
+      ["C","C","I","I","I","I","I"," ","I","I","I","I","I","C","C"],
+      ["C","I","I","I","I","C","C"," ","I","I",">","I","I","C","."],
+      ["C","C","C","C","C","C",".",  "H","D","I","I","I","I","C","G"]
+    ],
+    entities: [
+      { x: 0,  y: 0,  type: "player" },
+      { x: 14, y: 13, type: "box" },
+      { x: 3,  y: 6,  type: "box" },
+      { x: 3,  y: 8,  type: "box" },
+      { x: 6,  y: 1,  type: "box" },
+      { x: 8,  y: 1,  type: "box" },
+      { x: 8,  y: 6,  type: "box" },
+      { x: 6,  y: 14, type: "box" },
+      { x: 13, y: 3,  type: "box" },
+      { x: 14, y: 3,  type: "box" },
+      { x: 11, y: 11, type: "box" },
+      { x: 11, y: 10, type: "box" }
+    ],
+    connections: [
+      { door: { x: 8, y: 14 }, switch: { x: 14, y: 2 } }
+    ],
+    portalConnections: []
+  },
+  {
+    name: "2-2. 차가운 바람",
+    chapter: 2,
+    locked: true,
+    grid: [["."]],
+    entities: []
+  },
+  {
+    name: "2-3. 미끄러지는 관성",
+    chapter: 2,
+    locked: true,
+    grid: [["."]],
+    entities: []
+  },
+  {
+    name: "2-4. 서리 낀 감옥",
+    chapter: 2,
+    locked: true,
+    grid: [["."]],
+    entities: []
+  },
+  {
+    name: "2-5. 영원한 겨울의 방",
+    chapter: 2,
+    locked: true,
+    grid: [["."]],
+    entities: []
   }
 ];
 

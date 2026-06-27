@@ -288,6 +288,8 @@ let offsetY = 0;
 // Editor Mode status
 let isEditorMode = false;
 let spikesUp = false; // Spikes stateful state (toggles on player moves)
+let visualSpikesUp = false; // Visual-only spike state for rendering during animation
+let spikeToggleSchedule = []; // [{frame, spikesUp}] scheduled visual spike state changes per animation
 
 // Map Editor States
 let editorGridWidth = 15;
@@ -688,8 +690,11 @@ function initGame() {
   });
 
   document.getElementById('chapterCard3').addEventListener('click', () => {
-    sound.playFail();
-    shakeCard('chapterCard3');
+    sound.init();
+    currentChapterIdx = 2;
+    populateLevelSelect();
+    document.getElementById('chapterSelectOverlay').classList.add('hidden');
+    showStageSelectMenu();
   });
 
   document.getElementById('btnChapterSelectLeaderboard').addEventListener('click', () => {
@@ -836,8 +841,15 @@ function getLevelDisplayNumber(idx) {
   if (ch === 0) {
     return `${idx + 1}층`;
   } else {
-    const chIdx = idx - 5 + 1; // For Chapter 1, levels 5 to 9 are 1-1 to 1-5
-    return `1-${chIdx}`;
+    let chLvlIdx = 1;
+    for (let i = 0; i < idx; i++) {
+      const otherLvl = DEFAULT_LEVELS[i];
+      const otherCh = otherLvl.chapter !== undefined ? otherLvl.chapter : 0;
+      if (otherCh === ch) {
+        chLvlIdx++;
+      }
+    }
+    return `${ch}-${chLvlIdx}`;
   }
 }
 
@@ -1260,6 +1272,7 @@ function simulateMove(dx, dy) {
   let crumblingUpdates = []; // [{x, y, tile}]
   let holeFills = []; // [{x, y}]
   let soundsToPlay = [];
+  let spikeStatesPerStep = []; // spike state after each player step (for visual toggle)
 
   // Helper check for box existence at (x,y)
   function getBoxAt(x, y) {
@@ -1361,6 +1374,7 @@ function simulateMove(dx, dy) {
     
     // Player takes 1 step (to nextPX, nextPY)
     simSpikesUp = !simSpikesUp; // Spike state toggles
+    spikeStatesPerStep.push(simSpikesUp);
     
     if (simGrid[nextPY][nextPX] === 'T' && simSpikesUp) {
       curAP -= 10;
@@ -1460,6 +1474,7 @@ function simulateMove(dx, dy) {
 
         // Player takes 1 step during slide
         simSpikesUp = !simSpikesUp; // Spike state toggles
+        spikeStatesPerStep.push(simSpikesUp);
 
         if (simGrid[py][px] === 'H') {
           playerSteps.push({ x: px, y: py, action: 'fall' });
@@ -1506,6 +1521,7 @@ function simulateMove(dx, dy) {
 
     // Player takes 1 step
     simSpikesUp = !simSpikesUp; // Spike state toggles
+    spikeStatesPerStep.push(simSpikesUp);
 
     if (simGrid[py][px] === 'H') {
       playerSteps.push({ x: px, y: py, action: 'fall' });
@@ -1548,6 +1564,7 @@ function simulateMove(dx, dy) {
 
         // Player takes 1 step during slide
         simSpikesUp = !simSpikesUp; // Spike state toggles
+        spikeStatesPerStep.push(simSpikesUp);
 
         if (simGrid[py][px] === 'H') {
           playerSteps.push({ x: px, y: py, action: 'fall' });
@@ -1600,6 +1617,8 @@ function simulateMove(dx, dy) {
     endPlayerY: curPlayerY,
     endAP: curAP,
     endSpikesUp: simSpikesUp, // Return final spikes state
+    spikeStatesPerStep,       // Per-step spike states for visual animation
+    initialSpikesUp: spikesUp, // Spike state before this move (for visual schedule start)
     playerSteps,
     boxAnimations,
     boxFinalCoords: simBoxes,
@@ -1704,7 +1723,13 @@ function setupAnimations(sim) {
 
   // Duration per cell in frames
   const CELL_WALK_DUR = 8;
-  const CELL_SLIDE_DUR = 5;
+  const CELL_SLIDE_DUR = 6;
+  const CELL_SLIDE_PAUSE = 3; // Brief pause at each cell during sliding (frames)
+
+  // Build spike visual toggle schedule
+  // Starts from the pre-move spike state, toggles at the startFrame of each player step
+  spikeToggleSchedule = [{ frame: 0, spikesUp: sim.initialSpikesUp }];
+  visualSpikesUp = sim.initialSpikesUp;
 
   // 1. Setup Player animations chain
   let playerTime = 0;
@@ -1714,6 +1739,11 @@ function setupAnimations(sim) {
     const isSlide = to.action === 'slide' || to.action === 'spike';
     const isTeleport = to.action === 'teleport';
     const dur = isTeleport ? 14 : (isSlide ? CELL_SLIDE_DUR : CELL_WALK_DUR);
+
+    // Schedule visual spike toggle at the start of this player step
+    if (sim.spikeStatesPerStep && sim.spikeStatesPerStep[i - 1] !== undefined) {
+      spikeToggleSchedule.push({ frame: playerTime, spikesUp: sim.spikeStatesPerStep[i - 1] });
+    }
 
     animationQueue.push({
       target: 'player',
@@ -1729,6 +1759,23 @@ function setupAnimations(sim) {
     });
 
     playerTime += dur;
+
+    // Insert a brief hold pause after each sliding step (gives a rhythmic "step" feel)
+    if (to.action === 'slide') {
+      animationQueue.push({
+        target: 'player',
+        fromX: to.x,
+        fromY: to.y,
+        toX: to.x,
+        toY: to.y,
+        action: 'hold',
+        startFrame: playerTime,
+        endFrame: playerTime + CELL_SLIDE_PAUSE,
+        duration: CELL_SLIDE_PAUSE,
+        progress: 0
+      });
+      playerTime += CELL_SLIDE_PAUSE;
+    }
   }
 
   // 2. Setup Box animations chains
@@ -1834,6 +1881,14 @@ function updateAnimations() {
   if (!this.animTick) this.animTick = 0;
   this.animTick++;
 
+  // Apply spike visual toggle schedule
+  for (let i = spikeToggleSchedule.length - 1; i >= 0; i--) {
+    if (this.animTick >= spikeToggleSchedule[i].frame) {
+      visualSpikesUp = spikeToggleSchedule[i].spikesUp;
+      break;
+    }
+  }
+
   // Update entities visual coords
   // Default to final logical coords, then override with active interpolations
   player.animX = player.x;
@@ -1911,6 +1966,8 @@ function updateAnimations() {
   if (allFinished) {
     isAnimating = false;
     this.animTick = 0;
+    spikeToggleSchedule = [];
+    visualSpikesUp = spikesUp; // Sync visual state to final logical state
     
     // Clear scale overlays
     player.scale = 1.0;
@@ -2593,7 +2650,7 @@ function drawTile(x, y, type) {
 
     case 'T': // Spike Trap (Top-down view redesign)
       const key = `${x},${y}`;
-      const isUp = spikesUp || (activeSpikesAnim[key] && activeSpikesAnim[key] > 0);
+      const isUp = visualSpikesUp || (activeSpikesAnim[key] && activeSpikesAnim[key] > 0);
       
       // 1. Trap metal base plate (charcoal panel)
       ctx.fillStyle = '#21252b';
@@ -5743,6 +5800,9 @@ function startEditorTestPlay() {
   document.getElementById('levelSelect').value = "-1";
   document.getElementById('levelSelect').disabled = true;
 
+  const keyHint = document.getElementById('testModeKeyHint');
+  if (keyHint) keyHint.style.display = 'inline-flex';
+
   const playBackBtn = document.getElementById('btnPlayBackToMenu');
   if (playBackBtn) {
     playBackBtn.innerHTML = '<span class="icon">🛠️</span> <span class="text">에디터로 돌아가기</span>';
@@ -5885,6 +5945,9 @@ function exitTestPlayAndReturnToEditor() {
   document.getElementById('appContainer').classList.add('hidden');
   window.customMapMode = null;
   isEditorTesting = false;
+
+  const keyHint = document.getElementById('testModeKeyHint');
+  if (keyHint) keyHint.style.display = 'none';
 
   document.getElementById('mapEditorOverlay').classList.remove('hidden');
   
@@ -6059,14 +6122,6 @@ function showChapterSelectMenu() {
   document.getElementById('chapterSelectOverlay').classList.remove('hidden');
 }
 
-function shakeCard(cardId) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
-  card.classList.add('shake-anim');
-  setTimeout(() => {
-    card.classList.remove('shake-anim');
-  }, 400);
-}
 
 // Global script load initializer
 window.onload = initGame;

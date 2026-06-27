@@ -14,7 +14,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=78">
+  <link rel="stylesheet" href="style.css?v=79">
 </head>
 <body>
   <div class="glass-bg-blur"></div>
@@ -63,6 +63,11 @@
       <div class="level-select-wrapper">
         <label for="levelSelect" class="level-select-label" style="display: none !important;">스테이지: </label>
         <select id="levelSelect" class="styled-select"></select>
+        <span id="testModeKeyHint" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:#a0aec0; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:3px 10px; margin-left:6px; white-space:nowrap;">
+          <kbd style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:1px 5px;font-size:0.72rem;font-family:monospace;">Z</kbd> 실행취소
+          &nbsp;
+          <kbd style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:1px 5px;font-size:0.72rem;font-family:monospace;">Y</kbd> 다시실행
+        </span>
       </div>
       <div class="level-info">
         <h2 id="levelName">레벨 이름</h2>
@@ -340,9 +345,8 @@
           <div class="chapter-name">📦 박스 창고</div>
           <div class="chapter-desc">촘촘한 상자를 넘나들며 목표지점에 상자를 옮기세요</div>
         </div>
-        <!-- 챕터 2 (출시 예정 / 잠금) -->
-        <div class="chapter-card locked" id="chapterCard3">
-          <div class="chapter-badge locked">🔒 출시 예정</div>
+        <!-- 챕터 2 (플레이 가능) -->
+        <div class="chapter-card" id="chapterCard3">
           <div class="chapter-num">제 2장</div>
           <div class="chapter-name">❄️ 서리의 요새</div>
           <div class="chapter-desc">얼어붙은 관성의 얼음 빙판과 치명적인 함정이 모험가의 길을 가로막습니다.</div>
@@ -783,7 +787,7 @@
     </div>
   </div>
 
-  <script src="levels.js?v=40"></script>
-  <script src="game.js?v=144"></script>
+  <script src="levels.js?v=42"></script>
+  <script src="game.js?v=147"></script>
 </body>
 </html>
