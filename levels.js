@@ -355,8 +355,8 @@ const DEFAULT_LEVELS = [
     ]
   },
   {
-    name: "1-4. 새로운 퍼즐",
-    description: "관리자가 제작한 대형 특수 미로입니다. 엇박 가시와 수많은 상자, 그리고 포탈을 활용하여 전진하세요.",
+    name: "1-4. 어긋난 톱니바퀴",
+    description: "엇박 가시와 수많은 상자, 그리고 포탈을 활용하여 전진하세요.",
     width: 15,
     height: 15,
     maxAP: 130,
