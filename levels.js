@@ -426,7 +426,7 @@ const DEFAULT_LEVELS = [
     width: 15,
     height: 15,
     maxAP: 73,
-    optimalAP: 73,
+    optimalAP: 72,
     chapter: 2,
     locked: false,
     grid: [
