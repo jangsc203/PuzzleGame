@@ -785,7 +785,33 @@ function initGame() {
       editorSelectedTool = item.getAttribute('data-type');
       
       const statusEl = document.getElementById('editorLinkStatus');
-      if (editorSelectedTool === 'link') {
+      if (editorSelectedTool === 'launcher') {
+        const input = prompt("밀어내기 타일의 방향과 거리를 입력하세요.\n(예: u2 (위로 2칸), d1 (아래로 1칸), l3 (왼쪽으로 3칸), r2 (오른쪽으로 2칸)):");
+        if (input) {
+          const match = input.trim().match(/^([udlr])(\d+)$/i);
+          if (match) {
+            editorSelectedTool = match[0].toLowerCase();
+            statusEl.textContent = `밀어내기 도구 (${editorSelectedTool.toUpperCase()}) 선택됨`;
+          } else {
+            alert("올바르지 않은 형식입니다. u2, d3, l1, r4 등과 같이 입력해주세요.");
+            // Reset to Wall
+            paletteItems.forEach(btn => btn.classList.remove('active'));
+            const defaultBtn = document.querySelector(`#editorPalette .palette-item[data-type="W"]`);
+            if (defaultBtn) defaultBtn.classList.add('active');
+            editorSelectedTool = 'W';
+            statusEl.textContent = "도구 선택됨";
+            return;
+          }
+        } else {
+          // Cancelled
+          paletteItems.forEach(btn => btn.classList.remove('active'));
+          const defaultBtn = document.querySelector(`#editorPalette .palette-item[data-type="W"]`);
+          if (defaultBtn) defaultBtn.classList.add('active');
+          editorSelectedTool = 'W';
+          statusEl.textContent = "도구 선택됨";
+          return;
+        }
+      } else if (editorSelectedTool === 'link') {
         editorLinkStart = null;
         statusEl.textContent = "연결할 스위치(🔴/🟡), 잠긴 문(🔒) 또는 포탈(P)을 클릭하세요.";
       } else {
@@ -1257,6 +1283,20 @@ function attemptMove(dx, dy, isReplayCall = false) {
   updateHUD();
 }
 
+function getLauncherEffect(tile) {
+  if (!tile || typeof tile !== 'string') return null;
+  const match = tile.match(/^([udlr])(\d+)$/i);
+  if (!match) return null;
+  const dirChar = match[1].toLowerCase();
+  const dist = parseInt(match[2], 10);
+  let dx = 0, dy = 0;
+  if (dirChar === 'u') { dx = 0; dy = -1; }
+  else if (dirChar === 'd') { dx = 0; dy = 1; }
+  else if (dirChar === 'l') { dx = -1; dy = 0; }
+  else if (dirChar === 'r') { dx = 1; dy = 0; }
+  return { dx, dy, dist, dirChar };
+}
+
 function simulateMove(dx, dy) {
   let curPlayerX = player.x;
   let curPlayerY = player.y;
@@ -1391,7 +1431,7 @@ function simulateMove(dx, dy) {
 
     let boxPath = [{ x: nextPX, y: nextPY, action: 'start' }];
 
-    // Ice sliding trace for box
+    // Ice sliding & launcher trace for box
     let bx = boxTargetX;
     let by = boxTargetY;
     let boxActive = true;
@@ -1407,40 +1447,69 @@ function simulateMove(dx, dy) {
       boxPath.push({ x: bx, y: by, action: 'slide' });
       triggerCrumbleTile(nextPX, nextPY, crumblingUpdates, simGrid); // Box left original tile
 
-      if (simGrid[by][bx] === 'I') {
-        // Slide on ice loop
-        soundsToPlay.push({ delay: 100, type: 'slide' });
-        while (true) {
+      let loopCount = 0;
+      while (loopCount < 20 && boxActive) {
+        loopCount++;
+        // 1. Ice slide
+        if (simGrid[by][bx] === 'I') {
           let nextBX = bx + dx;
           let nextBY = by + dy;
-
-          // Slide obstacle & portal check (box cannot enter portal)
-          if (isBlocked(nextBX, nextBY) || getBoxAt(nextBX, nextBY) || simGrid[nextBY][nextBX] === 'P') break;
-
-          // One-way check
-          if (['^', '>', 'v', '<'].includes(simGrid[nextBY][nextBX])) {
-            if (!canEnterOneWay(nextBX, nextBY, dx, dy)) break;
-          }
-
-          // Move box forward on ice
-          bx = nextBX;
-          by = nextBY;
-
-          if (simGrid[by][bx] === 'H') {
-            boxPath.push({ x: bx, y: by, action: 'fall' });
-            boxActive = false;
-            holeFills.push({ x: bx, y: by });
-            simGrid[by][bx] = 'F';
-            soundsToPlay.push({ delay: 300, type: 'splash' });
-            break;
-          }
-
-          boxPath.push({ x: bx, y: by, action: 'slide' });
-
-          if (simGrid[by][bx] !== 'I') {
-            break;
+          if (isBlocked(nextBX, nextBY) || getBoxAt(nextBX, nextBY) || simGrid[nextBY][nextBX] === 'P') {
+            // stopped
+          } else if (['^', '>', 'v', '<'].includes(simGrid[nextBY][nextBX]) && !canEnterOneWay(nextBX, nextBY, dx, dy)) {
+            // stopped
+          } else {
+            bx = nextBX;
+            by = nextBY;
+            if (simGrid[by][bx] === 'H') {
+              boxPath.push({ x: bx, y: by, action: 'fall' });
+              boxActive = false;
+              holeFills.push({ x: bx, y: by });
+              simGrid[by][bx] = 'F';
+              soundsToPlay.push({ delay: 300, type: 'splash' });
+            } else {
+              boxPath.push({ x: bx, y: by, action: 'slide' });
+            }
+            continue; // Keep sliding on ice
           }
         }
+
+        // 2. Launcher check
+        const launcher = getLauncherEffect(simGrid[by][bx]);
+        if (launcher) {
+          let { dx: ldx, dy: ldy, dist } = launcher;
+          let movedAny = false;
+          for (let i = 0; i < dist; i++) {
+            let nextBX = bx + ldx;
+            let nextBY = by + ldy;
+            if (isBlocked(nextBX, nextBY) || getBoxAt(nextBX, nextBY) || simGrid[nextBY][nextBX] === 'P') {
+              break;
+            }
+            if (['^', '>', 'v', '<'].includes(simGrid[nextBY][nextBX]) && !canEnterOneWay(nextBX, nextBY, ldx, ldy)) {
+              break;
+            }
+            bx = nextBX;
+            by = nextBY;
+            movedAny = true;
+            if (simGrid[by][bx] === 'H') {
+              boxPath.push({ x: bx, y: by, action: 'fall' });
+              boxActive = false;
+              holeFills.push({ x: bx, y: by });
+              simGrid[by][bx] = 'F';
+              soundsToPlay.push({ delay: 300, type: 'splash' });
+              break;
+            } else {
+              boxPath.push({ x: bx, y: by, action: 'slide' });
+            }
+          }
+          if (movedAny) {
+            dx = ldx;
+            dy = ldy;
+            soundsToPlay.push({ delay: 100, type: 'slide' });
+            continue;
+          }
+        }
+        break;
       }
     }
 
@@ -1453,60 +1522,111 @@ function simulateMove(dx, dy) {
       path: boxPath
     });
 
-    // Check if player steps onto ice (where the box was originally)
+    // Check if player steps onto ice or launcher (where the box was originally)
     let px = nextPX;
     let py = nextPY;
-    if (simGrid[py][px] === 'I') {
-      soundsToPlay.push({ delay: 150, type: 'slide' });
-      while (true) {
+    let loopCount = 0;
+    let playerAlive = true;
+    while (loopCount < 20 && playerAlive) {
+      loopCount++;
+      // 1. Ice slide
+      if (simGrid[py][px] === 'I') {
         let nextPX = px + dx;
         let nextPY = py + dy;
 
-        if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) break;
-
-        if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX])) {
-          if (!canEnterOneWay(nextPX, nextPY, dx, dy)) break;
-        }
-
-        triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
-        
-        px = nextPX;
-        py = nextPY;
-
-        // Player takes 1 step during slide
-        simSpikesUp = !simSpikesUp; // Spike state toggles
-        spikeStatesPerStep.push(simSpikesUp);
-
-        if (simGrid[py][px] === 'H') {
-          playerSteps.push({ x: px, y: py, action: 'fall' });
-          curAP = 0;
-          soundsToPlay.push({ delay: 250, type: 'fail' });
-          break;
-        }
-
-        if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
-          curAP -= 10;
-          playerSteps.push({ x: px, y: py, action: 'spike' });
-          soundsToPlay.push({ delay: 200, type: 'spike' });
-          break; // Stop sliding since player dies
+        if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) {
+          // stopped
+        } else if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX]) && !canEnterOneWay(nextPX, nextPY, dx, dy)) {
+          // stopped
         } else {
-          playerSteps.push({ x: px, y: py, action: 'slide' });
-        }
+          triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
+          px = nextPX;
+          py = nextPY;
 
-        // Check teleport portal during sliding
-        if (simGrid[py][px] === 'P') {
-          const portalDest = findOtherPortal(px, py);
-          if (portalDest) {
-            playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
-            soundsToPlay.push({ delay: 200, type: 'teleport' });
-            px = portalDest.x;
-            py = portalDest.y;
-            break; // slide breaks immediately upon warping
+          simSpikesUp = !simSpikesUp;
+          spikeStatesPerStep.push(simSpikesUp);
+
+          if (simGrid[py][px] === 'H') {
+            playerSteps.push({ x: px, y: py, action: 'fall' });
+            curAP = 0;
+            soundsToPlay.push({ delay: 250, type: 'fail' });
+            playerAlive = false;
+          } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
+            curAP -= 10;
+            playerSteps.push({ x: px, y: py, action: 'spike' });
+            soundsToPlay.push({ delay: 200, type: 'spike' });
+            playerAlive = false;
+          } else {
+            playerSteps.push({ x: px, y: py, action: 'slide' });
+          }
+
+          if (playerAlive && simGrid[py][px] === 'P') {
+            const portalDest = findOtherPortal(px, py);
+            if (portalDest) {
+              playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+              soundsToPlay.push({ delay: 200, type: 'teleport' });
+              px = portalDest.x;
+              py = portalDest.y;
+            }
+          }
+          continue;
+        }
+      }
+
+      // 2. Launcher check
+      const launcher = getLauncherEffect(simGrid[py][px]);
+      if (launcher && playerAlive) {
+        let { dx: ldx, dy: ldy, dist } = launcher;
+        let movedAny = false;
+        for (let i = 0; i < dist; i++) {
+          let nextPX = px + ldx;
+          let nextPY = py + ldy;
+          if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) break;
+          if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX]) && !canEnterOneWay(nextPX, nextPY, ldx, ldy)) break;
+
+          triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
+          px = nextPX;
+          py = nextPY;
+          movedAny = true;
+
+          simSpikesUp = !simSpikesUp;
+          spikeStatesPerStep.push(simSpikesUp);
+
+          if (simGrid[py][px] === 'H') {
+            playerSteps.push({ x: px, y: py, action: 'fall' });
+            curAP = 0;
+            soundsToPlay.push({ delay: 250, type: 'fail' });
+            playerAlive = false;
+            break;
+          } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
+            curAP -= 10;
+            playerSteps.push({ x: px, y: py, action: 'spike' });
+            soundsToPlay.push({ delay: 200, type: 'spike' });
+            playerAlive = false;
+            break;
+          } else {
+            playerSteps.push({ x: px, y: py, action: 'slide' });
+          }
+
+          if (simGrid[py][px] === 'P') {
+            const portalDest = findOtherPortal(px, py);
+            if (portalDest) {
+              playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+              soundsToPlay.push({ delay: 200, type: 'teleport' });
+              px = portalDest.x;
+              py = portalDest.y;
+              break;
+            }
           }
         }
-
-        if (simGrid[py][px] !== 'I') break;
+        if (movedAny) {
+          dx = ldx;
+          dy = ldy;
+          soundsToPlay.push({ delay: 100, type: 'slide' });
+          continue;
+        }
       }
+      break;
     }
 
     curPlayerX = px;
@@ -1524,10 +1644,13 @@ function simulateMove(dx, dy) {
     simSpikesUp = !simSpikesUp; // Spike state toggles
     spikeStatesPerStep.push(simSpikesUp);
 
+    let playerAlive = true;
+
     if (simGrid[py][px] === 'H') {
       playerSteps.push({ x: px, y: py, action: 'fall' });
       curAP = 0;
       soundsToPlay.push({ delay: 100, type: 'fail' });
+      playerAlive = false;
     } else if (simGrid[py][px] === 'P') {
       // Walked onto portal
       playerSteps.push({ x: px, y: py, action: 'walk' });
@@ -1538,72 +1661,119 @@ function simulateMove(dx, dy) {
         px = portalDest.x;
         py = portalDest.y;
       }
-    } else if (simGrid[py][px] === 'I') {
-      if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
-        curAP -= 10;
-        playerSteps.push({ x: px, y: py, action: 'spike' });
-        soundsToPlay.push({ delay: 50, type: 'spike' });
-      } else {
-        playerSteps.push({ x: px, y: py, action: 'slide' });
-        soundsToPlay.push({ delay: 50, type: 'slide' });
-      }
-
-      while (true) {
-        let nextPX = px + dx;
-        let nextPY = py + dy;
-
-        if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) break;
-
-        if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX])) {
-          if (!canEnterOneWay(nextPX, nextPY, dx, dy)) break;
-        }
-
-        triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
-
-        px = nextPX;
-        py = nextPY;
-
-        // Player takes 1 step during slide
-        simSpikesUp = !simSpikesUp; // Spike state toggles
-        spikeStatesPerStep.push(simSpikesUp);
-
-        if (simGrid[py][px] === 'H') {
-          playerSteps.push({ x: px, y: py, action: 'fall' });
-          curAP = 0;
-          soundsToPlay.push({ delay: 250, type: 'fail' });
-          break;
-        }
-
-        if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
-          curAP -= 10;
-          playerSteps.push({ x: px, y: py, action: 'spike' });
-          soundsToPlay.push({ delay: 200, type: 'spike' });
-          break; // Stop sliding since player dies
-        } else {
-          playerSteps.push({ x: px, y: py, action: 'slide' });
-        }
-
-        // Check teleport portal during sliding
-        if (simGrid[py][px] === 'P') {
-          const portalDest = findOtherPortal(px, py);
-          if (portalDest) {
-            playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
-            soundsToPlay.push({ delay: 100, type: 'teleport' });
-            px = portalDest.x;
-            py = portalDest.y;
-            break; // slide breaks immediately upon warping
-          }
-        }
-
-        if (simGrid[py][px] !== 'I') break;
-      }
     } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
       curAP -= 10;
       playerSteps.push({ x: px, y: py, action: 'spike' });
       soundsToPlay.push({ delay: 50, type: 'spike' });
+      playerAlive = false;
     } else {
       playerSteps.push({ x: px, y: py, action: 'walk' });
       soundsToPlay.push({ delay: 50, type: 'step' });
+    }
+
+    // Now, run ice / launcher loop
+    let loopCount = 0;
+    while (loopCount < 20 && playerAlive) {
+      loopCount++;
+
+      // 1. Ice slide
+      if (simGrid[py][px] === 'I') {
+        let nextPX = px + dx;
+        let nextPY = py + dy;
+
+        if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) {
+          // stopped
+        } else if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX]) && !canEnterOneWay(nextPX, nextPY, dx, dy)) {
+          // stopped
+        } else {
+          triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
+          px = nextPX;
+          py = nextPY;
+
+          simSpikesUp = !simSpikesUp;
+          spikeStatesPerStep.push(simSpikesUp);
+
+          if (simGrid[py][px] === 'H') {
+            playerSteps.push({ x: px, y: py, action: 'fall' });
+            curAP = 0;
+            soundsToPlay.push({ delay: 250, type: 'fail' });
+            playerAlive = false;
+          } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
+            curAP -= 10;
+            playerSteps.push({ x: px, y: py, action: 'spike' });
+            soundsToPlay.push({ delay: 200, type: 'spike' });
+            playerAlive = false;
+          } else {
+            playerSteps.push({ x: px, y: py, action: 'slide' });
+          }
+
+          if (playerAlive && simGrid[py][px] === 'P') {
+            const portalDest = findOtherPortal(px, py);
+            if (portalDest) {
+              playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+              soundsToPlay.push({ delay: 200, type: 'teleport' });
+              px = portalDest.x;
+              py = portalDest.y;
+            }
+          }
+          continue;
+        }
+      }
+
+      // 2. Launcher check
+      const launcher = getLauncherEffect(simGrid[py][px]);
+      if (launcher && playerAlive) {
+        let { dx: ldx, dy: ldy, dist } = launcher;
+        let movedAny = false;
+        for (let i = 0; i < dist; i++) {
+          let nextPX = px + ldx;
+          let nextPY = py + ldy;
+          if (isBlocked(nextPX, nextPY) || getBoxAt(nextPX, nextPY)) break;
+          if (['^', '>', 'v', '<'].includes(simGrid[nextPY][nextPX]) && !canEnterOneWay(nextPX, nextPY, ldx, ldy)) break;
+
+          triggerCrumbleTile(px, py, crumblingUpdates, simGrid);
+          px = nextPX;
+          py = nextPY;
+          movedAny = true;
+
+          simSpikesUp = !simSpikesUp;
+          spikeStatesPerStep.push(simSpikesUp);
+
+          if (simGrid[py][px] === 'H') {
+            playerSteps.push({ x: px, y: py, action: 'fall' });
+            curAP = 0;
+            soundsToPlay.push({ delay: 250, type: 'fail' });
+            playerAlive = false;
+            break;
+          } else if ((simGrid[py][px] === 'T' && simSpikesUp) || (simGrid[py][px] === 't' && !simSpikesUp)) {
+            curAP -= 10;
+            playerSteps.push({ x: px, y: py, action: 'spike' });
+            soundsToPlay.push({ delay: 200, type: 'spike' });
+            playerAlive = false;
+            break;
+          } else {
+            playerSteps.push({ x: px, y: py, action: 'slide' });
+          }
+
+          if (simGrid[py][px] === 'P') {
+            const portalDest = findOtherPortal(px, py);
+            if (portalDest) {
+              playerSteps.push({ x: portalDest.x, y: portalDest.y, action: 'teleport' });
+              soundsToPlay.push({ delay: 200, type: 'teleport' });
+              px = portalDest.x;
+              py = portalDest.y;
+              break;
+            }
+          }
+        }
+        if (movedAny) {
+          dx = ldx;
+          dy = ldy;
+          soundsToPlay.push({ delay: 100, type: 'slide' });
+          continue;
+        }
+      }
+      break;
     }
 
     curPlayerX = px;
@@ -2304,6 +2474,77 @@ function drawTile(x, y, type) {
   ctx.strokeStyle = '#181e36';
   ctx.lineWidth = 1;
   ctx.strokeRect(px, py, tileSize, tileSize);
+
+  const launcher = getLauncherEffect(type);
+  if (launcher) {
+    const { dx: ldx, dy: ldy, dist, dirChar } = launcher;
+    ctx.save();
+    
+    // Draw industrial dark base with yellow/orange accents
+    const baseGrad = ctx.createLinearGradient(px, py, px + tileSize, py + tileSize);
+    baseGrad.addColorStop(0, '#2d2615'); // Dark metallic gold/brown
+    baseGrad.addColorStop(1, '#1b160b');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(px + 1, py + 1, tileSize - 2, tileSize - 2);
+    
+    // Neon golden/orange border
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+    
+    // Draw chevrons indicating direction
+    ctx.strokeStyle = 'rgba(255, 213, 79, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    const cx = px + tileSize / 2;
+    const cy = py + tileSize / 2;
+    
+    ctx.beginPath();
+    if (dirChar === 'u') {
+      // Pointing up: three stacked chevrons
+      for (let offset of [-8, -2, 4]) {
+        ctx.moveTo(cx - 6, cy + offset + 3);
+        ctx.lineTo(cx, cy + offset);
+        ctx.lineTo(cx + 6, cy + offset + 3);
+      }
+    } else if (dirChar === 'd') {
+      // Pointing down
+      for (let offset of [-4, 2, 8]) {
+        ctx.moveTo(cx - 6, cy + offset - 3);
+        ctx.lineTo(cx, cy + offset);
+        ctx.lineTo(cx + 6, cy + offset - 3);
+      }
+    } else if (dirChar === 'l') {
+      // Pointing left
+      for (let offset of [-8, -2, 4]) {
+        ctx.moveTo(cx + offset + 3, cy - 6);
+        ctx.lineTo(cx + offset, cy);
+        ctx.lineTo(cx + offset + 3, cy + 6);
+      }
+    } else if (dirChar === 'r') {
+      // Pointing right
+      for (let offset of [-4, 2, 8]) {
+        ctx.moveTo(cx + offset - 3, cy - 6);
+        ctx.lineTo(cx + offset, cy);
+        ctx.lineTo(cx + offset - 3, cy + 6);
+      }
+    }
+    ctx.stroke();
+    
+    // Render the distance number in the center
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffd54f';
+    ctx.shadowBlur = 4;
+    ctx.font = 'bold 13px Orbitron, Outfit, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(dist, cx, cy);
+    
+    ctx.restore();
+    return;
+  }
 
   switch (type) {
     case 'W': // Wall
@@ -5318,6 +5559,11 @@ function renderEditorGrid() {
         case 'P': bgClass = 'cell-portal'; break;
         case '^': case 'v': case '<': case '>': bgClass = 'cell-oneway'; break;
         case ' ': bgClass = 'cell-empty'; break;
+        default:
+          if (getLauncherEffect(tileType)) {
+            bgClass = 'cell-launcher';
+          }
+          break;
       }
       cell.classList.add(bgClass);
 
@@ -5373,25 +5619,35 @@ function renderEditorGrid() {
           cell.textContent = '📦';
         }
       } else {
-        switch (tileType) {
-          case 'W': cell.textContent = '🧱'; break;
-          case '.': cell.textContent = ''; break;
-          case ' ': cell.textContent = ''; break;
-          case 'I': cell.textContent = '❄️'; break;
-          case 'H': cell.textContent = '🕳️'; break;
-          case 'G': cell.textContent = '🌟'; break;
-          case 'S': cell.textContent = '🔴'; break;
-          case 'K': cell.textContent = '🟡'; break;
-          case 'D': cell.textContent = '🔒'; break;
-          case 'T': cell.textContent = '🔺'; break;
-          case 't': cell.textContent = '🔻'; break;
-          case 'C': cell.textContent = '1'; break;
-          case 'X': cell.textContent = '2'; break;
-          case 'P': cell.textContent = '▲'; break;
-          case '^': cell.textContent = '⬆️'; break;
-          case 'v': cell.textContent = '⬇️'; break;
-          case '<': cell.textContent = '⬅️'; break;
-          case '>': cell.textContent = '➡️'; break;
+        const launcher = getLauncherEffect(tileType);
+        if (launcher) {
+          let arrow = '🚀';
+          if (launcher.dirChar === 'u') arrow = '⬆️';
+          else if (launcher.dirChar === 'd') arrow = '⬇️';
+          else if (launcher.dirChar === 'l') arrow = '⬅️';
+          else if (launcher.dirChar === 'r') arrow = '➡️';
+          cell.textContent = arrow + launcher.dist;
+        } else {
+          switch (tileType) {
+            case 'W': cell.textContent = '🧱'; break;
+            case '.': cell.textContent = ''; break;
+            case ' ': cell.textContent = ''; break;
+            case 'I': cell.textContent = '❄️'; break;
+            case 'H': cell.textContent = '🕳️'; break;
+            case 'G': cell.textContent = '🌟'; break;
+            case 'S': cell.textContent = '🔴'; break;
+            case 'K': cell.textContent = '🟡'; break;
+            case 'D': cell.textContent = '🔒'; break;
+            case 'T': cell.textContent = '🔺'; break;
+            case 't': cell.textContent = '🔻'; break;
+            case 'C': cell.textContent = '1'; break;
+            case 'X': cell.textContent = '2'; break;
+            case 'P': cell.textContent = '▲'; break;
+            case '^': cell.textContent = '⬆️'; break;
+            case 'v': cell.textContent = '⬇️'; break;
+            case '<': cell.textContent = '⬅️'; break;
+            case '>': cell.textContent = '➡️'; break;
+          }
         }
       }
 
@@ -5680,7 +5936,7 @@ function handleEditorCellClick(x, y) {
     removeConnectionAt(x, y);
     invalidateEditorVerification();
     renderEditorGrid();
-  } else if (['I', 'H', 'G', 'T', 't', 'C', 'X', 'P', '^', 'v', '<', '>'].includes(editorSelectedTool)) {
+  } else if (['I', 'H', 'G', 'T', 't', 'C', 'X', 'P', '^', 'v', '<', '>'].includes(editorSelectedTool) || getLauncherEffect(editorSelectedTool)) {
     if (currentTile === 'W' || currentTile === ' ') {
       window.isMouseDown = false;
       alert("바닥 타일을 먼저 설치해야 합니다!");
